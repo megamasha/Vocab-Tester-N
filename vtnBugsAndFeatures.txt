@@ -1,0 +1,12 @@
+Vocab Tester N:
+
+    Give it a TUI
+
+Potential improvements:
+
+    getc returns int, but return value is stored as char, leading to potential EOF error. Fix.
+    vocabfuzzysearch is case sensitive, could be changed with tolower() or toupper().
+    Test is currently (by design) case sensitive. An option could be added to make it case insensitive.
+    scanf, as used in vocabfuzzysearch is hideously unstable, and can cause unexpected results or crashes if a letter or other unexpected input is entered. Could be replaced with proper validation function.
+    Can the separate while loops at lines 648 and 654 be combined using 'substringlength++'?
+    if the default and most recently loaded databases are the same, the user is effectively asked the same thing twice

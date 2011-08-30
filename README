@@ -1,0 +1,9 @@
+Well hello there!
+
+I'm an autodidact. I am teaching myself programming. First C, then C++, Java and possibly Python (who knows where I'll go from there...)
+
+I also speak a few (real-life, spoken) languages, and like to learn and brush up on my vocab from time to time. This project is a way for me to acheive both.
+
+The first version of this vocab tester was an excel document with macros in basic.
+The second version was programmed from scratch in C as a CLI executable: https://github.com/megamasha/Vocab-Tester
+This is the third version, with semi-spangly TUI-ness!
