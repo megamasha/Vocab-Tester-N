@@ -1,0 +1,1 @@
+LDFLAGS= -lpanel -lmenu -lform -lncurses

@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <ncurses.h>
+#include <panel.h>
+#include <menu.h>
+#include <form.h>
 
 #ifdef _WIN32
 # define CLEARCOMMAND "cls"
@@ -23,6 +27,8 @@
 #define KNOWNTONORM 2
 #define KNOWNTOOLD 3
 #define OLDTONORM 1
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 struct vocab
 {
@@ -55,7 +61,8 @@ FILE * inputfile = NULL;
 FILE * outputfile = NULL;
 struct listinfo n2l, norm, known, old;
 int changedflag = 0;
-char * currentfilename = NULL;
+char currentfilename[MAXTEXTLENGTH+1] = DOUTPUTFILENAME;
+int nlines,ncols;
 
 void loaddatabase();//select which database to load and pass it to getrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
@@ -76,10 +83,15 @@ struct vocab * vocabfuzzysearch(char * searchstring);//returns a pointer to a us
 int editormenu(struct vocab * entry, int fromtest);//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to be run again, 0 to continue without the menu or -1 to return to the main menu
 void testme();//main code for learning vocab, including options menu
 char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
-int getyesorno();//asks for yes or no, returns true (1) if yes
+int getyesorno(char * question);//asks for yes or no, returns true (1) if yes
 void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!!
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
 float calculatescore(int showstats);//returns overall idea of progress as percentage, displays screenful of stats if 'showstats' is true
+void startup();//sets up curses mode, erroring if no can do
+void shutdown();//asks about saving if appropriate and exits
+void outofmemory();//HowCanThisBe!? Quits...
+void donothing(),showscore();//does nothing!
+void windowtitle(WINDOW * window, char * title);//writes the given string to the given window (top centre)
 
 void loaddatabase()//select which database to load
 {
@@ -90,19 +102,37 @@ void loaddatabase()//select which database to load
     char * deffilename = DINPUTFILENAME;
     char * inputfilename = (char *)malloc(MAXTEXTLENGTH+1);
     if (!inputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
+    WINDOW * wbloaddatabase, * wloaddatabase;
+    PANEL * ploaddatabase;
+    
+    getmaxyx(stdscr,nlines,ncols);
+    wbloaddatabase = newwin(nlines-4,ncols-8,2,4);
+    if(!wbloaddatabase)outofmemory();
+    ploaddatabase = new_panel(wbloaddatabase);
+    wattrset(wbloaddatabase,COLOR_PAIR(1));
+    werase(wbloaddatabase);
+    wbkgd(wbloaddatabase,COLOR_PAIR(1));
+    box(wbloaddatabase,0,0);
+    windowtitle(wbloaddatabase,"Load Database");
+    getmaxyx(wbloaddatabase,nlines,ncols);
+    wloaddatabase = derwin(wbloaddatabase,nlines-4,ncols-8,2,4);
+    if (!wloaddatabase) outofmemory();
+
     strcpy(inputfilename,deffilename);
-    printf("Loading...\nLoad default database: %s? (y/n)",inputfilename);
-    if (!getyesorno())//import user specified database
+    wprintw(wloaddatabase,"Loading...\nLoad default database: %s? (y/n)",inputfilename);
+    update_panels();
+    doupdate();
+    if (!getyesorno("FISH!"))//import user specified database
     {
         printf("Default file type is .~sv. Load .~sv file? (y/n)");
-        if (getyesorno()) //import .~sv file
+        if (getyesorno("FISH!")) //import .~sv file
         {
             printf("Enter name of .~sv file to load:\n");
         }
         else //alternative options
         {
             printf("Import .csv file instead? (y/n)");
-            if (getyesorno()) //import .csv file
+            if (getyesorno("FISH!")) //import .csv file
             {
                 separator = ',';
                 extension = commasep;
@@ -380,10 +410,10 @@ void reindex (struct listinfo * list)
 
 void reloaddatabase()//optionally saves and unloads present database before loading another
 {
-    printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
-    if (getyesorno()) savedatabase();
+    //printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
+    if (getyesorno("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n")) savedatabase();
     printf("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.\n");
-    if (getyesorno()) unloaddatabase();
+    if (getyesorno("FISH!")) unloaddatabase();
     loaddatabase();
     clearinputbuffer();
 }
@@ -396,14 +426,14 @@ void savedatabase()
     if (!outputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
     strcpy(outputfilename,deffilename);
     printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to most recently lodaded database: %s? (y/n)",currentfilename);
-    if(getyesorno())
+    if(getyesorno("FISH!"))
     {
         strcpy(outputfilename,currentfilename);
     }
     else
     {
         printf("Save to default database: %s? (y/n)",outputfilename);
-        if (!getyesorno())//user specifies filename for database output
+        if (!getyesorno("FISH!"))//user specifies filename for database output
         {
             printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
             outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),".~sv");
@@ -516,7 +546,7 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
         printf("Enter answer text for this entry (max %i chars):\n",maxtextlength);
         newvocab->answer=gettextfromkeyboard(newvocab->answer,MAXTEXTLENGTH);
         printf("Would you like to add additional info for this entry?(y/n)");
-        if (getyesorno())
+        if (getyesorno("FISH!"))
         {
             printf("Enter info for this entry (max %i chars):\n",maxtextlength);
             newvocab->info=gettextfromkeyboard(newvocab->info,MAXTEXTLENGTH);
@@ -527,7 +557,7 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
             printf("No info added\n");
         }
         printf("Would you like to add a hint to help you remember this entry?(y/n)");
-        if (getyesorno())
+        if (getyesorno("FISH!"))
         {
             printf("Enter hint for this entry (max %i chars):\n",maxtextlength);
             newvocab->hint=gettextfromkeyboard(newvocab->hint,MAXTEXTLENGTH);
@@ -603,12 +633,12 @@ struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entr
     else if (numberofmatches)
     {
         printf("More than one match found. Show best matches? (y/n)");
-        if (getyesorno()) return vocabfuzzysearch(searchstring);
+        if (getyesorno("FISH!")) return vocabfuzzysearch(searchstring);
     }
     else
     {
         printf("No exact matches found. Perform fuzzy search? (y/n)");
-        if (getyesorno()) return vocabfuzzysearch(searchstring);
+        if (getyesorno("FISH!")) return vocabfuzzysearch(searchstring);
     }
     return NULL;
 }
@@ -737,7 +767,7 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
                   }
                   break;
         case 'd': printf("Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
-                  if (getyesorno()) {removefromlist(entry,list,1);printf("Entry deleted!\n");return 0;}
+                  if (getyesorno("FISH!")) {removefromlist(entry,list,1);printf("Entry deleted!\n");return 0;}
                   else printf("Entry was NOT deleted.\n");
                   break;
         case 'x': return -1;
@@ -751,11 +781,11 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
         default: printf("Invalid choice.\n");
     }
     printf("Select again from the options menu? (y/n)");
-    if (getyesorno()) return 1;
+    if (getyesorno("FISH!")) return 1;
     else
     {
         if (fromtest) printf("Continue testing?(y/n)"); else printf ("Return to database management menu?(y/n)");
-        if (getyesorno()) return 0; else return -1;
+        if (getyesorno("FISH!")) return 0; else return -1;
     }
 }
 
@@ -953,14 +983,63 @@ char * gettextfromkeyboard(char * target,int maxchars)
     return target;
 }
 
-int getyesorno()
+int getyesorno(char * question)
 {
+    WINDOW * wbgetyesorno, * wgetyesorno;
+    PANEL * pgetyesorno;
+    MENU* getyesornomenu;
+    ITEM ** getyesornoitems;//this pointer will be passed to the menu
+    char * getyesornochoices[] = //strings for menu
+    {
+        "[ No ]",
+        "[ Yes ]"
+    };
+    int getyesornoreturnvalues[] = { 0 , 1 };
+
+    ITEM * ITEMselected; //this will point to selected item
+    int * pselected; //this will point to the function attached to selected item
+
+    int i, nquestionlines, numberofchoices = ARRAY_SIZE(getyesornochoices);
+
+    nquestionlines=strlen(question)/32;
+    getmaxyx(stdscr,nlines,ncols);
+    wbgetyesorno = newwin(nquestionlines+7,40,(nlines-(nquestionlines+7))/2,(ncols-40)/2);
+    if(!wbgetyesorno)outofmemory();
+    pgetyesorno = new_panel(wbgetyesorno);
+    wattrset(wbgetyesorno,COLOR_PAIR(2));
+    werase(wbgetyesorno);
+    wbkgd(wbgetyesorno,COLOR_PAIR(2));
+    box(wbgetyesorno,0,0);
+    windowtitle(wbgetyesorno,"Yes or No Question:");
+    wgetyesorno = derwin(wbgetyesorno,nlines-3,32,2,4);
+    if (!wgetyesorno) outofmemory();
+    
+    if(!(getyesornoitems = (ITEM**)calloc(numberofchoices+1,sizeof(ITEM*)))) outofmemory();
+    for(i=0;i < numberofchoices;i++)
+    {
+        getyesornoitems[i] = new_item(getyesornochoices[i], getyesornochoices[i]);
+        set_item_userptr (getyesornoitems[i],&getyesornoreturnvalues[i]);
+    }
+    getyesornoitems[numberofchoices] = (ITEM *)NULL;
+    
+    getyesornomenu = new_menu(getyesornoitems);
+    set_menu_win(getyesornomenu,wgetyesorno);
+    getmaxyx(wgetyesorno,nlines,ncols);
+    set_menu_sub(getyesornomenu,derwin(wgetyesorno,1,20,nlines-1,(32-17)/2));
+    set_menu_back(getyesornomenu,COLOR_PAIR(2));
+    menu_opts_off(getyesornomenu,O_ROWMAJOR | O_SHOWDESC);
+    set_menu_format(getyesornomenu, 1, 2);
+
+    wprintw(wgetyesorno,question);
+    post_menu(getyesornomenu);
+    update_panels();
+    doupdate();
+    
     char yesorno = '\n';
     while (toupper(yesorno)!='Y'&&toupper(yesorno)!='N')
     {
-        yesorno=getchar();
-        clearinputbuffer();
-        if (toupper(yesorno)!='Y'&&toupper(yesorno)!='N') printf("Invalid choice. You must enter Y or N:\n");
+        yesorno=getch();
+        if (toupper(yesorno)!='Y'&&toupper(yesorno)!='N') wprintw(wgetyesorno,"Invalid choice. You must enter Y or N:\n");
     }
     if (toupper(yesorno)=='Y') return 1;
     else return 0;
@@ -1044,45 +1123,171 @@ float calculatescore(int showstats)//returns overall idea of progress as percent
     return score;
 }
 
-int main(int argc, char* argv[])
+void startup()//sets up curses mode, erroring if no can do
 {
-    n2l.entries = norm.entries = known.entries = old.entries = 0;
-    char menuchoice = '\0';
-    currentfilename = (char*)malloc(MAXTEXTLENGTH+1);
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);//FISH! Want this for other windows?
+    if (has_colors()==FALSE) {printw("Sorry, your terminal doesn't support the colour features\nof this version of the vocab tester.\nPlease use Version N, which uses plain, uncoloured text.\nPress any key to exit (where's the 'any' key?).");refresh();getch();endwin();exit(EXIT_FAILURE);}
+    start_color();
+    init_pair(1,COLOR_WHITE,COLOR_BLUE);
+    init_pair(2,COLOR_BLACK,COLOR_WHITE);
+    init_pair(3,COLOR_WHITE,COLOR_RED);
 
     srand((unsigned)time(NULL));
 
-    clrscr();
-    loaddatabase();
-    printf("Welcome to the ");
+    n2l.entries = norm.entries = known.entries = old.entries = 0;
+}
+
+void shutdown()//asks about saving if appropriate and exits
+{
+    /*    if (changedflag) //FISH! TODO
+     *   {
+     *       printf("Your database has changed (or you have given more answers) since you last saved.\nIf you continue without saving, these changes will be lost!\n\nSave now? (y/n)");
+     *       if (getyesorno()) savedatabase();
+}*/
+    erase();
+    printw("Bye for now!\n\nPress any key to exit. (Where's the 'any' key?)");
+    refresh;
+    getch();
+    endwin();
+    exit(EXIT_SUCCESS);
+}
+
+void outofmemory()//HowCanThisBe!? Quits...
+{
+    erase();
+    printf("HowCanThisBe!? Out of memory! Quitting... (press enter)\n");
+    refresh();
+    getch();
+    endwin();
+    exit(EXIT_FAILURE);
+}
+
+void donothing()
+{
+    int pointless;
+    pointless++;
+    printw("Face!");
+    refresh();
+}
+
+void windowtitle(WINDOW * window, char * title)//writes the given string to the given window (top centre)
+{
+    int textlength;
+    textlength = strlen(title);
+    getmaxyx(window,nlines,ncols);
+    if (textlength>ncols-2)
+    {
+        mvwaddnstr(window,0,1,title,ncols-5);
+        waddstr(window,"...");
+    }
+    else
+    {
+        mvwaddstr(window,0,(ncols-textlength)/2,title);
+    }
+}
+
+void showscore()
+{
+    donothing();
+}
+
+int main(int argc, char* argv[])
+{
+    startup();//star curses mode
+    WINDOW * wbmainmenu, * wmainmenu;//main menu window for title and border, subwindow for text
+    PANEL * pmainmenu;//attach to panel (panels library just makes life easier)
+    MENU* mainmenu;
+    ITEM ** mainmenuitems;//this pointer will be passed to the menu
+    char * mainmenuchoices[][2] = //strings for menu
+    {
+        {"v:","View Statistics"},
+        {"t:","Test Me!"},
+        {"l:","Load"},
+        {"m:","Manage Database"},
+        {"s:","Save"},
+        {"x:","Exit"}
+    };
+    void (*mainmenupointers[])() = /* This is an array of pointers to functions *
+                                      * with no parameters and no return value... *
+                                      * Or at least I think it is. *brain melts*  */
+    {
+        showscore,
+        testme,
+        reloaddatabase,
+        databasemenu,
+        savedatabase,
+        shutdown
+    };
+    
+    ITEM * ITEMselected; //this will point to selected item
+    void (*pselected)(); //this will point to the function attached to selected item
+
+    int i,numberofchoices = ARRAY_SIZE(mainmenuchoices);
+    int welcomeflag = 0;
+    int menuchoice = '\0';
+
+    windowtitle(stdscr,"Vocab Tester Version N by Rob Davies");
+    getmaxyx(stdscr,nlines,ncols);
+    wbmainmenu = newwin(nlines-4,ncols-8,2,4);
+    if(!wbmainmenu)outofmemory();
+    keypad(wbmainmenu,TRUE);
+    pmainmenu = new_panel(wbmainmenu);
+    wattrset(wbmainmenu,COLOR_PAIR(1));
+//    loaddatabase();
+    wbkgd(wbmainmenu,COLOR_PAIR(1));
+    box(wbmainmenu,0,0);
+    windowtitle(wbmainmenu,"Main Menu");
+    getmaxyx(wbmainmenu,nlines,ncols);
+    wmainmenu = derwin(wbmainmenu,nlines-4,ncols-8,2,4);
+    if (!wmainmenu) outofmemory();
+    keypad(wmainmenu,TRUE);
+
+    if(!(mainmenuitems = (ITEM**)calloc(numberofchoices+1,sizeof(ITEM*)))) outofmemory();
+    for(i=0;i < numberofchoices;i++)
+    {
+        mainmenuitems[i] = new_item(mainmenuchoices[i][0], mainmenuchoices[i][1]);
+        set_item_userptr (mainmenuitems[i],mainmenupointers[i]);
+    }
+    mainmenuitems[numberofchoices] = (ITEM *)NULL;
+    wmove(wmainmenu,0,0);
+    if (!welcomeflag) {wprintw(wmainmenu,"Welcome to the ");welcomeflag++;}
+    wattron(wmainmenu,A_BOLD);
+    wprintw(wmainmenu,"Vocab Test, Version N.");
+    wattroff(wmainmenu,A_BOLD);
+    mainmenu = new_menu(mainmenuitems);
+    set_menu_win(mainmenu,wmainmenu);
+    set_menu_sub(mainmenu,derwin(wmainmenu,6,19,5,4));
+    set_menu_back(mainmenu,COLOR_PAIR(1));
+    menu_opts_off(mainmenu,O_NONCYCLIC);
+    post_menu(mainmenu);
+    update_panels();
+    doupdate();
     while (tolower(menuchoice)!='x')
     {
-        printf("Vocab Test, Version C.\n\nMain Menu:\n\n\tv: View Statistics\n\tt: Test Me!\n\tl: Load\n\tm: Manage Database\n\ts: Save\n\tx: Exit\n\n");
-        menuchoice = getchar();
-        if (menuchoice!='\n') clearinputbuffer();
+        menuchoice=wgetch(wmainmenu);
         switch (tolower(menuchoice))
         {
-            case 'x': break;
-            case 'v': calculatescore(1);break;
-            case 't': testme(); break;
-            case 's': clrscr();savedatabase();break;
-            case 'l': clrscr();reloaddatabase();break;
-            case 'm': databasemenu(); break;
-            default: printf("Invalid choice. Please try again.\n"); clearinputbuffer(); break;
+            case 'x': shutdown();
+                      break;
+            case KEY_UP: menu_driver(mainmenu,REQ_UP_ITEM);break;
+            case KEY_DOWN: menu_driver(mainmenu,REQ_DOWN_ITEM);break;
+            case 10:    ITEMselected = current_item(mainmenu);
+                        pselected = item_userptr(ITEMselected);
+                        pselected();
+                        break;
+            //case 'v': showscore();break;
+            //case 't': testme(); break;
+            //case 's': savedatabase();break;
+            //case 'l': reloaddatabase();break;
+            //case 'm': databasemenu(); break;
+            //default: wprintw(wmainmenu,"Invalid choice. Please try again.\n");break;
         }
-        clrscr();
     }
-
-    if (changedflag)
-    {
-        printf("Your database has changed (or you have given more correct/incorrect answers) since you last saved.\nIf you continue without saving, these changes will be lost!\n\nSave now? (y/n)");
-        if (getyesorno()) savedatabase();
-    }
-
-    if (currentfilename) free(currentfilename);
-    currentfilename=NULL;
-    printf("Bye for now!\n\nPress enter to exit.");
-    clearinputbuffer();
-    clrscr();
+    del_panel(pmainmenu);
+    delwin(wmainmenu);
+    shutdown();
     return 0;
 }
