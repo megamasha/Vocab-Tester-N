@@ -90,6 +90,8 @@ float calculatescore(int showstats);//returns overall idea of progress as percen
 void startup();//sets up curses mode, erroring if no can do
 void shutdown();//asks about saving if appropriate and exits
 void outofmemory();//HowCanThisBe!? Quits...
+WINDOW * nicebigwindow();//creates a bordered, blue window, taking up most of the screen, with keypad enabled
+WINDOW * innerwindow(WINDOW * outerwindow);//creates an area within another window for purposes of displaying text with a margin
 void donothing(),showscore();//does nothing!
 void windowtitle(WINDOW * window, char * title);//writes the given string to the given window (top centre)
 
@@ -104,53 +106,53 @@ void loaddatabase()//select which database to load
     if (!inputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
     WINDOW * wbloaddatabase, * wloaddatabase;
     PANEL * ploaddatabase;
-    
-    getmaxyx(stdscr,nlines,ncols);
-    wbloaddatabase = newwin(nlines-4,ncols-8,2,4);
-    if(!wbloaddatabase)outofmemory();
+    int usingfilename = 1;
+
+    wbloaddatabase = nicebigwindow();
     ploaddatabase = new_panel(wbloaddatabase);
-    wattrset(wbloaddatabase,COLOR_PAIR(1));
-    werase(wbloaddatabase);
-    wbkgd(wbloaddatabase,COLOR_PAIR(1));
-    box(wbloaddatabase,0,0);
     windowtitle(wbloaddatabase,"Load Database");
-    getmaxyx(wbloaddatabase,nlines,ncols);
-    wloaddatabase = derwin(wbloaddatabase,nlines-4,ncols-8,2,4);
-    if (!wloaddatabase) outofmemory();
+    wloaddatabase = innerwindow(wbloaddatabase);
 
     strcpy(inputfilename,deffilename);
-    wprintw(wloaddatabase,"Loading...\nLoad default database: %s? (y/n)",inputfilename);
+    wprintw(wloaddatabase,"Loading...\nDefault database is: %s\n",inputfilename);
     update_panels();
     doupdate();
-    if (!getyesorno("FISH!"))//import user specified database
+    if (!getyesorno("Load default database?"))//import user specified database
     {
-        printf("Default file type is .~sv. Load .~sv file? (y/n)");
-        if (getyesorno("FISH!")) //import .~sv file
+        if (getyesorno("Default file type is .~sv. Load .~sv file?")) //import .~sv file
         {
-            printf("Enter name of .~sv file to load:\n");
+            wprintw(wloaddatabase,"Enter name of .~sv file to load:\n");
         }
         else //alternative options
         {
-            printf("Import .csv file instead? (y/n)");
-            if (getyesorno("FISH!")) //import .csv file
+            if (getyesorno("Import .csv file instead?")) //import .csv file
             {
                 separator = ',';
                 extension = commasep;
-                printf("Enter name of .csv file to import:\n");
+                wprintw(wloaddatabase,"Enter name of .csv file to import:\n");
             }
             else //not loading a file
             {
-                printf("No database file selected. No database loaded!\n");
-                free(inputfilename);
-                return;
+                wprintw(wloaddatabase,"No database file selected. No database loaded!\n");
+                usingfilename = 0;
             }
         }
-        inputfilename=validfilename(gettextfromkeyboard(inputfilename,MAXTEXTLENGTH),extension);
+        if (usingfilename) inputfilename=validfilename(gettextfromkeyboard(inputfilename,MAXTEXTLENGTH),extension);
     }
-    getrecordsfromfile(inputfilename,separator);
-    inputfilename=validfilename(inputfilename,".~sv");
-    strcpy(currentfilename,inputfilename);
+    if (usingfilename)
+    {
+        getrecordsfromfile(inputfilename,separator);
+        inputfilename=validfilename(inputfilename,".~sv");
+        strcpy(currentfilename,inputfilename);
+    }
     free(inputfilename);
+    getmaxyx(wloaddatabase,nlines,ncols);
+    mvwprintw(wloaddatabase,nlines-1,0,"Press any key to continue...");
+    wgetch(wloaddatabase);
+    delwin(wloaddatabase);
+    del_panel(ploaddatabase);
+    delwin(wbloaddatabase);
+    return;
 }
 
 char * validfilename (char * filename, char * extension)//filename validation
@@ -412,10 +414,8 @@ void reloaddatabase()//optionally saves and unloads present database before load
 {
     //printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
     if (getyesorno("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n")) savedatabase();
-    printf("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.\n");
-    if (getyesorno("FISH!")) unloaddatabase();
+    if (getyesorno("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.\n")) unloaddatabase();
     loaddatabase();
-    clearinputbuffer();
 }
 
 void savedatabase()
@@ -1000,6 +1000,7 @@ int getyesorno(char * question)
     int * pselected; //this will point to the function attached to selected item
 
     int i, nquestionlines, numberofchoices = ARRAY_SIZE(getyesornochoices);
+    int returnvalue = 0, loopflag;
 
     nquestionlines=strlen(question)/32;
     getmaxyx(stdscr,nlines,ncols);
@@ -1011,9 +1012,11 @@ int getyesorno(char * question)
     wbkgd(wbgetyesorno,COLOR_PAIR(2));
     box(wbgetyesorno,0,0);
     windowtitle(wbgetyesorno,"Yes or No Question:");
-    wgetyesorno = derwin(wbgetyesorno,nlines-3,32,2,4);
+    getmaxyx(wbgetyesorno,nlines,ncols);
+    wgetyesorno = derwin(wbgetyesorno,nlines-4,ncols-8,2,4);
     if (!wgetyesorno) outofmemory();
-    
+    keypad(wgetyesorno,TRUE);
+
     if(!(getyesornoitems = (ITEM**)calloc(numberofchoices+1,sizeof(ITEM*)))) outofmemory();
     for(i=0;i < numberofchoices;i++)
     {
@@ -1027,22 +1030,41 @@ int getyesorno(char * question)
     getmaxyx(wgetyesorno,nlines,ncols);
     set_menu_sub(getyesornomenu,derwin(wgetyesorno,1,20,nlines-1,(32-17)/2));
     set_menu_back(getyesornomenu,COLOR_PAIR(2));
-    menu_opts_off(getyesornomenu,O_ROWMAJOR | O_SHOWDESC);
+    menu_opts_off(getyesornomenu, O_SHOWDESC);
     set_menu_format(getyesornomenu, 1, 2);
 
     wprintw(wgetyesorno,question);
     post_menu(getyesornomenu);
     update_panels();
     doupdate();
-    
-    char yesorno = '\n';
-    while (toupper(yesorno)!='Y'&&toupper(yesorno)!='N')
+
+    loopflag = 1;
+    int yesorno = '\n';
+    while (loopflag)
     {
-        yesorno=getch();
-        if (toupper(yesorno)!='Y'&&toupper(yesorno)!='N') wprintw(wgetyesorno,"Invalid choice. You must enter Y or N:\n");
+        yesorno=wgetch(wgetyesorno);
+        switch (tolower(yesorno))
+        {
+            case 'y': returnvalue = 1;loopflag = 0;break;
+            case 'n': returnvalue = 0;loopflag = 0;break;
+            case KEY_RIGHT: menu_driver(getyesornomenu,REQ_RIGHT_ITEM); break;
+            case KEY_LEFT: menu_driver(getyesornomenu,REQ_LEFT_ITEM); break;
+            case 10:    ITEMselected = current_item(getyesornomenu);
+                        pselected = (int *)item_userptr(ITEMselected);
+                        returnvalue = *pselected;
+                        loopflag = 0;
+                        break;
+        }
     }
-    if (toupper(yesorno)=='Y') return 1;
-    else return 0;
+    unpost_menu(getyesornomenu);
+    free_menu(getyesornomenu);
+    for (i=0;i<numberofchoices;i++);
+    delwin(wgetyesorno);
+    del_panel(pgetyesorno);
+    delwin(wbgetyesorno);
+    update_panels();
+    doupdate();
+    return returnvalue;
 }
 
 void clrscr()
@@ -1165,6 +1187,30 @@ void outofmemory()//HowCanThisBe!? Quits...
     exit(EXIT_FAILURE);
 }
 
+WINDOW * nicebigwindow()//creates a bordered, blue window, taking up most of the screen, with keypad enabled
+{
+    WINDOW * wtemp;
+    getmaxyx(stdscr,nlines,ncols);
+    wtemp = newwin(nlines-4,ncols-8,2,4);
+    if(!wtemp)outofmemory();
+    wattrset(wtemp,COLOR_PAIR(1));
+    wbkgd(wtemp,COLOR_PAIR(1));
+    werase(wtemp);
+    box(wtemp,0,0);
+    keypad(wtemp,TRUE);
+    return wtemp;
+}
+
+WINDOW * innerwindow(WINDOW * outerwindow)//creates an area within another window for purposes of displaying text/menus etc with a margin, keypad enabled
+{
+    WINDOW * wtemp;
+    getmaxyx(outerwindow,nlines,ncols);
+    wtemp = derwin(outerwindow,nlines-4,ncols-8,2,4);
+    if (!wtemp) outofmemory();
+    keypad(wtemp,TRUE);
+    return wtemp;
+}
+
 void donothing()
 {
     int pointless;
@@ -1230,20 +1276,12 @@ int main(int argc, char* argv[])
     int menuchoice = '\0';
 
     windowtitle(stdscr,"Vocab Tester Version N by Rob Davies");
-    getmaxyx(stdscr,nlines,ncols);
-    wbmainmenu = newwin(nlines-4,ncols-8,2,4);
-    if(!wbmainmenu)outofmemory();
-    keypad(wbmainmenu,TRUE);
+    wbmainmenu = nicebigwindow();
     pmainmenu = new_panel(wbmainmenu);
-    wattrset(wbmainmenu,COLOR_PAIR(1));
-//    loaddatabase();
-    wbkgd(wbmainmenu,COLOR_PAIR(1));
-    box(wbmainmenu,0,0);
     windowtitle(wbmainmenu,"Main Menu");
-    getmaxyx(wbmainmenu,nlines,ncols);
-    wmainmenu = derwin(wbmainmenu,nlines-4,ncols-8,2,4);
-    if (!wmainmenu) outofmemory();
-    keypad(wmainmenu,TRUE);
+    wmainmenu = innerwindow(wbmainmenu);
+
+    loaddatabase();
 
     if(!(mainmenuitems = (ITEM**)calloc(numberofchoices+1,sizeof(ITEM*)))) outofmemory();
     for(i=0;i < numberofchoices;i++)
@@ -1281,10 +1319,12 @@ int main(int argc, char* argv[])
             //case 'v': showscore();break;
             //case 't': testme(); break;
             //case 's': savedatabase();break;
-            //case 'l': reloaddatabase();break;
+            case 'l': reloaddatabase();break;
             //case 'm': databasemenu(); break;
             //default: wprintw(wmainmenu,"Invalid choice. Please try again.\n");break;
         }
+        update_panels();
+        doupdate();
     }
     del_panel(pmainmenu);
     delwin(wmainmenu);
