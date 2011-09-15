@@ -63,6 +63,7 @@ struct listinfo n2l, norm, known, old;
 int changedflag = 0;
 char currentfilename[MAXTEXTLENGTH+1] = DOUTPUTFILENAME;
 int nlines,ncols;
+char passingstring[513];
 
 void loaddatabase();//select which database to load and pass it to getrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
@@ -92,8 +93,12 @@ void shutdown();//asks about saving if appropriate and exits
 void outofmemory();//HowCanThisBe!? Quits...
 WINDOW * nicebigwindow();//creates a bordered, blue window, taking up most of the screen, with keypad enabled
 WINDOW * innerwindow(WINDOW * outerwindow);//creates an area within another window for purposes of displaying text with a margin
+void popupinfo(
+void popuperror(char * errormessage);//pops up an error and makes a note in the log
 void donothing(),showscore();//does nothing!
 void windowtitle(WINDOW * window, char * title);//writes the given string to the given window (top centre)
+int textwidth (char * text);//returns the width of a given string (which may include newlines) in chars when displayed without wrapping (for purposes of determining optimum window width)
+int textheight (char * text, int width);//returns the height of a given string (which may include newlines) in lines when displayed wrapped to the given width (for purposes of determining optimum window width)
 
 void loaddatabase()//select which database to load
 {
@@ -117,14 +122,19 @@ void loaddatabase()//select which database to load
     wprintw(wloaddatabase,"Loading...\nDefault database is: %s\n",inputfilename);
     update_panels();
     doupdate();
-    if (!getyesorno("Load default database?"))//import user specified database
+    sprintf(passingstring,"Load default database: %s?",inputfilename);
+    if (!getyesorno(passingstring))//import user specified database
     {
+        wprintw(wloaddatabase,"Not loading default database.\n");
+        update_panels();
+        doupdate();
         if (getyesorno("Default file type is .~sv. Load .~sv file?")) //import .~sv file
         {
             wprintw(wloaddatabase,"Enter name of .~sv file to load:\n");
         }
         else //alternative options
         {
+            wprintw(wloaddatabase,"Not loading ,~sv database.\n");
             if (getyesorno("Import .csv file instead?")) //import .csv file
             {
                 separator = ',';
@@ -133,7 +143,7 @@ void loaddatabase()//select which database to load
             }
             else //not loading a file
             {
-                wprintw(wloaddatabase,"No database file selected. No database loaded!\n");
+                wprintw(wloaddatabase,"Not importing .csv file.\nNo database file selected. No database loaded!\n");
                 usingfilename = 0;
             }
         }
@@ -176,7 +186,7 @@ char * validfilename (char * filename, char * extension)//filename validation
         filename[i]=extension[j];
         i++;j++;
     }
-    if (i==MAXTEXTLENGTH) fprintf(stderr,"Filename reached maximum length including extension, possibly truncated!\n");
+    if (i==MAXTEXTLENGTH) popuperror("Filename reached maximum length including extension, possibly truncated!");
     return filename;
 }
 
@@ -187,18 +197,18 @@ void getrecordsfromfile(char * inputfilename,char separator)
     struct listinfo * newvocablist;
     if (!(inputfile = fopen(inputfilename, "r")))
     {
-        fprintf(stderr,"Unable to read input file'%s'. File does not exist or is in use.\n",inputfilename);
-    }    
+        sprintf(passingstring,"Unable to read input file'%s'. File does not exist or is in use.\n",inputfilename);
+        popuperror(passingstring);
+    }
     else
     {
-        printf("Opened input file %s, reading contents...\n",inputfilename);
+        wrintw(wloaddatabase,"Opened input file %s, reading contents...\n",inputfilename);
         while (!feof(inputfile))
         {
             newvocab = (struct vocab *)malloc(sizeof(struct vocab));
             if (!newvocab)
             {
-                printf("Memory allocation failed!\n");
-                return;
+                outofmemory();
             }
             else
             {
@@ -223,14 +233,18 @@ void getrecordsfromfile(char * inputfilename,char separator)
                 if (newvocab->question==NULL||newvocab->answer==NULL)
                 {
                     badcounter++;
-                    printf("Removing faulty vocab record (%d) created at line %i of input file...\n",badcounter,(goodcounter+badcounter));
+                    fprintf(stderr,"Removing faulty vocab record (%d) created at line %i of input file...\n",badcounter,(goodcounter+badcounter));
                     removefromlist(newvocab,newvocablist,1);
                 }
                 else goodcounter++;
             }
         }
         fclose(inputfile);
-        printf("...finished.\n%i entries read from %s.\n%i faulty entries encountered.\n\n",goodcounter,inputfilename,badcounter);
+        wprintw(wloaddatabase,"...finished.\n%i entries read from %s.\n\n",goodcounter,inputfilename);
+        if (badcounter)
+        {
+            sprintf(passingstring,"%i faulty entries encountered!\n\nIt is HIGHLY recommended you do NOT save back to the original file.\n\nSee error log for details.",badcounter);
+            popuperror(passingstring);
     }
     return;
 }
@@ -240,7 +254,7 @@ char * readtextfromfile(int maxchars,char separator)
     int i=0;
     char ch;
     char * target = (char *)malloc(maxchars+1); //allocate memory for new string
-    if (!target) {printf("Memory allocation failed!\n");return 0;}//return 0 and print error if alloc failed
+    if (!target) outofmemory();
 
     ch=getc(inputfile);
     if (ch==separator||ch==EOF){free(target);return NULL;}//if field is blank (zero-length), return null pointer (||EOF added because it hangs on blank database)
@@ -276,7 +290,7 @@ int readnumberfromfile (int maxvalue,char separator)
     int number, i=0;
     char ch;
     char * buff = (char *)malloc(10+1);//allocate enough space for an 10-digit number and a terminating null
-    if (!buff) {printf("Memory allocation failed!\n");return 0;}//return 0 and print error if alloc failed
+    if (!buff) outofmemory();
     if (!maxvalue) maxvalue=MAXINTVALUE;
 
     ch=getc(inputfile);
@@ -316,7 +330,7 @@ struct vocab * addtolist(struct vocab * newentry, struct listinfo * list)
     else if (list==&norm) newentry->known = 1;
     else if (list==&known) newentry->known = 2;
     else if (list==&old) newentry->known = 3;
-    else {fprintf(stderr,"Unable to correctly add vocab entry to list!");return NULL;}
+    else {popuperror("Unable to correctly add vocab entry to list!");return NULL;}
 
     return newentry;
 }
@@ -343,7 +357,7 @@ int removefromlist(struct vocab * entry, struct listinfo * list,int freeup)
             prev=prev->next;
             if (!prev)
             {
-                printf("Trying to delete an entry from a list it's not in!!\n");
+                popuperror("Trying to delete an entry from a list it's not in!!\n");
                 return 0;
             }
         }
@@ -385,7 +399,7 @@ int unloaddatabase()
             case 1: {list = &norm;break;}
             case 2: {list = &known;break;}
             case 3: {list = &old;break;}
-            default: {fprintf(stderr,"List pointer error!\n");return 0;}
+            default: {popuperror("List pointer error!");return 0;}
         }
         while (list->head!=NULL)
         {
@@ -394,7 +408,7 @@ int unloaddatabase()
             counter++;
         }
     }
-    printf("Unloaded %i entries from memory.\n",counter);
+    fprintf(stderr,"Unloaded %i entries from memory.\n",counter); //FISH! TODO creater modular popup function
     return 1;
 }
 
@@ -407,16 +421,18 @@ void reindex (struct listinfo * list)
         workingentry->index = counter++;
         workingentry=workingentry->next;
     }
-    if (list->entries!=counter-1) printf("Reindexing Error!\n");
+    if (list->entries!=counter-1) popuperror("Reindexing Error!");
 }
 
 void reloaddatabase()//optionally saves and unloads present database before loading another
 {
     //printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
-    if (getyesorno("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n")) savedatabase();
-    if (getyesorno("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.\n")) unloaddatabase();
+    if (getyesorno("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!")) savedatabase();
+    if (getyesorno("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.")) unloaddatabase();
     loaddatabase();
 }
+
+//FISH! TODO continue converting from here...
 
 void savedatabase()
 {
@@ -999,12 +1015,18 @@ int getyesorno(char * question)
     ITEM * ITEMselected; //this will point to selected item
     int * pselected; //this will point to the function attached to selected item
 
-    int i, nquestionlines, numberofchoices = ARRAY_SIZE(getyesornochoices);
+    int i, questionwidth, questionheight, numberofchoices = ARRAY_SIZE(getyesornochoices);
     int returnvalue = 0, loopflag;
 
-    nquestionlines=strlen(question)/32;
-    getmaxyx(stdscr,nlines,ncols);
-    wbgetyesorno = newwin(nquestionlines+7,40,(nlines-(nquestionlines+7))/2,(ncols-40)/2);
+    questionwidth=textwidth(question);
+    if (questionwidth<17) questionwidth=17;
+    else
+    {
+        getmaxyx(stdscr,nlines,ncols);
+        if (questionwidth>ncols-16)questionwidth=ncols-16;
+    }
+    questionheight=textheight(question,questionwidth);
+    wbgetyesorno = newwin(questionheight+7,questionwidth+8,(nlines-(questionheight+7))/2,(ncols-(questionwidth+8))/2);
     if(!wbgetyesorno)outofmemory();
     pgetyesorno = new_panel(wbgetyesorno);
     wattrset(wbgetyesorno,COLOR_PAIR(2));
@@ -1028,7 +1050,7 @@ int getyesorno(char * question)
     getyesornomenu = new_menu(getyesornoitems);
     set_menu_win(getyesornomenu,wgetyesorno);
     getmaxyx(wgetyesorno,nlines,ncols);
-    set_menu_sub(getyesornomenu,derwin(wgetyesorno,1,20,nlines-1,(32-17)/2));
+    set_menu_sub(getyesornomenu,derwin(wgetyesorno,1,17,nlines-1,(ncols-17)/2));
     set_menu_back(getyesornomenu,COLOR_PAIR(2));
     menu_opts_off(getyesornomenu, O_SHOWDESC);
     set_menu_format(getyesornomenu, 1, 2);
@@ -1157,6 +1179,8 @@ void startup()//sets up curses mode, erroring if no can do
     init_pair(2,COLOR_BLACK,COLOR_WHITE);
     init_pair(3,COLOR_WHITE,COLOR_RED);
 
+    freopen ("errorlog.txt","a",stderr);
+
     srand((unsigned)time(NULL));
 
     n2l.entries = norm.entries = known.entries = old.entries = 0;
@@ -1171,7 +1195,7 @@ void shutdown()//asks about saving if appropriate and exits
 }*/
     erase();
     printw("Bye for now!\n\nPress any key to exit. (Where's the 'any' key?)");
-    refresh;
+    refresh();
     getch();
     endwin();
     exit(EXIT_SUCCESS);
@@ -1180,7 +1204,8 @@ void shutdown()//asks about saving if appropriate and exits
 void outofmemory()//HowCanThisBe!? Quits...
 {
     erase();
-    printf("HowCanThisBe!? Out of memory! Quitting... (press enter)\n");
+    fprintf(stderr,"Out of memory.\n");
+    printw("HowCanThisBe!? Out of memory!\nCheck errorlog.txt for other errors\n\nQuitting... (press enter)\n");
     refresh();
     getch();
     endwin();
@@ -1199,6 +1224,39 @@ WINDOW * nicebigwindow()//creates a bordered, blue window, taking up most of the
     box(wtemp,0,0);
     keypad(wtemp,TRUE);
     return wtemp;
+}
+
+void popuperror(char * errormessage)//pops up an error and makes a note in the log
+{
+    WINDOW * wberror, * werror;
+    PANEL * perror;
+    int errorwidth, errorheight;
+
+    fprintf(stderr,"%s\n",errormessage);
+    errorwidth=textwidth(errormessage);
+    getmaxyx(stdscr,nlines,ncols);
+    if (errorwidth>ncols-16)errorwidth=ncols-16;
+    errorheight=textheight(errormessage,errorwidth);
+    wberror = newwin(errorheight+4,errorwidth+8,(nlines-(errorheight+4))/2,(ncols-(errorwidth+8))/2);
+    if(!wberror)outofmemory();
+    perror = new_panel(wberror);
+    wattrset(wberror,COLOR_PAIR(3));
+    werase(wberror);
+    wbkgd(wberror,COLOR_PAIR(3));
+    box(wberror,0,0);
+    windowtitle(wberror,"Error!");
+    werror = innerwindow(wberror);
+
+    wprintw(werror,errormessage);
+    update_panels();
+    doupdate();
+    wgetch(werror);
+
+    delwin(werror);
+    del_panel(perror);
+    delwin(wberror);
+    update_panels();
+    doupdate();
 }
 
 WINDOW * innerwindow(WINDOW * outerwindow)//creates an area within another window for purposes of displaying text/menus etc with a margin, keypad enabled
@@ -1233,6 +1291,44 @@ void windowtitle(WINDOW * window, char * title)//writes the given string to the 
     {
         mvwaddstr(window,0,(ncols-textlength)/2,title);
     }
+}
+
+int textwidth (char * text)//returns the width of a given string (which may include newlines) in chars when displayed without wrapping (for purposes of determining optimum window width)
+{
+    int i=0,j=0,k=0;
+    while (text[i]!='\0')
+    {
+        if (text[i]=='\n')
+        {
+            k=j>k?j:k;
+            j=0;
+        }
+        else j++;
+        i++;
+    }
+    k=j>k?j:k;
+    return k;
+}
+
+int textheight (char * text, int width)//returns the height of a given string (which may include newlines) in lines when displayed wrapped to the given width (for purposes of determining optimum window width)
+{
+    int i=0,j=0,k=1;
+    while (text[i]!='\0')
+    {
+        if (text[i]=='\n')
+        {
+            k++;
+            j=0;
+        }
+        else j++;
+        if (j>width)
+        {
+            k++;
+            j=1;
+        }
+        i++;
+    }
+    return k;
 }
 
 void showscore()
