@@ -65,9 +65,9 @@ char currentfilename[MAXTEXTLENGTH+1] = DOUTPUTFILENAME;
 int nlines,ncols;
 char passingstring[513];
 
-void loaddatabase();//select which database to load and pass it to getrecordsfromfile
+void loaddatabase();//select which database to load and pass it to wgetrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
-void getrecordsfromfile(char * inputfilename,char separator);//load a file into memory
+void wgetrecordsfromfile(WINDOW * window,char * inputfilename,char separator);//load a file into memory
 char * readtextfromfile(int maxchars,char separator);//get text field from file
 int readnumberfromfile(int maxvalue,char separator);//get integer field from file
 struct vocab * addtolist(struct vocab * newentry, struct listinfo * list);//add given (already filled in) vocab record to given list
@@ -83,7 +83,7 @@ struct vocab * vocabsearch(char * searchstring);//returns a pointer to vocab ent
 struct vocab * vocabfuzzysearch(char * searchstring);//returns a pointer to a user-selected vocab entry out of a list of up to 10 possible suggestions
 int editormenu(struct vocab * entry, int fromtest);//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to be run again, 0 to continue without the menu or -1 to return to the main menu
 void testme();//main code for learning vocab, including options menu
-char * gettextfromkeyboard(char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
+char * wgettextfromkeyboard(WINDOW * window, char * target,int maxchars);//set given string (char pointer) from keyboard, allocating memory if necessary
 int getyesorno(char * question);//asks for yes or no, returns true (1) if yes
 void clrscr();//clears the screen. Now with #ifdef preprocessor script for portability!!
 void clearinputbuffer();//clears the input buffer after each request for input, so that the following request is not getting the overflow
@@ -93,7 +93,7 @@ void shutdown();//asks about saving if appropriate and exits
 void outofmemory();//HowCanThisBe!? Quits...
 WINDOW * nicebigwindow();//creates a bordered, blue window, taking up most of the screen, with keypad enabled
 WINDOW * innerwindow(WINDOW * outerwindow);//creates an area within another window for purposes of displaying text with a margin
-void popupinfo(
+void popupinfo(int colour,char * title,char * message);//pops up a window with the given colour, title and text
 void popuperror(char * errormessage);//pops up an error and makes a note in the log
 void donothing(),showscore();//does nothing!
 void windowtitle(WINDOW * window, char * title);//writes the given string to the given window (top centre)
@@ -147,11 +147,11 @@ void loaddatabase()//select which database to load
                 usingfilename = 0;
             }
         }
-        if (usingfilename) inputfilename=validfilename(gettextfromkeyboard(inputfilename,MAXTEXTLENGTH),extension);
+        if (usingfilename) inputfilename=validfilename(wgettextfromkeyboard(/*FISH!*/stdscr,inputfilename,MAXTEXTLENGTH),extension);
     }
     if (usingfilename)
     {
-        getrecordsfromfile(inputfilename,separator);
+        wgetrecordsfromfile(wloaddatabase,inputfilename,separator);
         inputfilename=validfilename(inputfilename,".~sv");
         strcpy(currentfilename,inputfilename);
     }
@@ -190,19 +190,20 @@ char * validfilename (char * filename, char * extension)//filename validation
     return filename;
 }
 
-void getrecordsfromfile(char * inputfilename,char separator)
+void wgetrecordsfromfile(WINDOW * window,char * inputfilename,char separator)
 {
     int goodcounter = 0,badcounter = 0;
     struct vocab * newvocab;
     struct listinfo * newvocablist;
     if (!(inputfile = fopen(inputfilename, "r")))
     {
-        sprintf(passingstring,"Unable to read input file'%s'. File does not exist or is in use.\n",inputfilename);
+        sprintf(passingstring,"Unable to read input file: '%s'. File does not exist or is in use.",inputfilename);
         popuperror(passingstring);
+        wprintw(window,"Loading file Failed.");
     }
     else
     {
-        wrintw(wloaddatabase,"Opened input file %s, reading contents...\n",inputfilename);
+        wprintw(window,"Opened input file %s, reading contents...\n",inputfilename);
         while (!feof(inputfile))
         {
             newvocab = (struct vocab *)malloc(sizeof(struct vocab));
@@ -240,11 +241,12 @@ void getrecordsfromfile(char * inputfilename,char separator)
             }
         }
         fclose(inputfile);
-        wprintw(wloaddatabase,"...finished.\n%i entries read from %s.\n\n",goodcounter,inputfilename);
+        wprintw(window,"...finished.\n%i entries read from %s.\n\n",goodcounter,inputfilename);
         if (badcounter)
         {
             sprintf(passingstring,"%i faulty entries encountered!\n\nIt is HIGHLY recommended you do NOT save back to the original file.\n\nSee error log for details.",badcounter);
             popuperror(passingstring);
+        }
     }
     return;
 }
@@ -408,7 +410,8 @@ int unloaddatabase()
             counter++;
         }
     }
-    fprintf(stderr,"Unloaded %i entries from memory.\n",counter); //FISH! TODO creater modular popup function
+    sprintf(passingstring,"Unloaded %i entries from memory.",counter);
+    popupinfo(4,"",passingstring);
     return 1;
 }
 
@@ -452,7 +455,7 @@ void savedatabase()
         if (!getyesorno("FISH!"))//user specifies filename for database output
         {
             printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
-            outputfilename=validfilename(gettextfromkeyboard(outputfilename,MAXTEXTLENGTH),".~sv");
+            outputfilename=validfilename(wgettextfromkeyboard(/*FISH!*/stdscr,outputfilename,MAXTEXTLENGTH),".~sv");
         }
     }
     if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
@@ -524,7 +527,7 @@ void databasemenu()//provides ability to add entries to database, and edit entri
                       clearinputbuffer();
                       break;
             case 'e': changedflag = 1;printf("Entry to edit or delete:");
-                searchstring=gettextfromkeyboard(searchstring,MAXTEXTLENGTH);
+                searchstring=wgettextfromkeyboard(/*FISH!*/stdscr,searchstring,MAXTEXTLENGTH);
                 if (searchstring) entry = vocabsearch(searchstring);
                 if (entry!=NULL)
                 {
@@ -558,14 +561,14 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
     {
         newvocab->question=newvocab->answer=newvocab->info=newvocab->hint=NULL;
         printf("Enter question text for this entry (max %i chars):\n",maxtextlength);
-        newvocab->question=gettextfromkeyboard(newvocab->question,MAXTEXTLENGTH);
+        newvocab->question=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->question,MAXTEXTLENGTH);
         printf("Enter answer text for this entry (max %i chars):\n",maxtextlength);
-        newvocab->answer=gettextfromkeyboard(newvocab->answer,MAXTEXTLENGTH);
+        newvocab->answer=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->answer,MAXTEXTLENGTH);
         printf("Would you like to add additional info for this entry?(y/n)");
         if (getyesorno("FISH!"))
         {
             printf("Enter info for this entry (max %i chars):\n",maxtextlength);
-            newvocab->info=gettextfromkeyboard(newvocab->info,MAXTEXTLENGTH);
+            newvocab->info=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->info,MAXTEXTLENGTH);
         }
         else
         {
@@ -576,7 +579,7 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
         if (getyesorno("FISH!"))
         {
             printf("Enter hint for this entry (max %i chars):\n",maxtextlength);
-            newvocab->hint=gettextfromkeyboard(newvocab->hint,MAXTEXTLENGTH);
+            newvocab->hint=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->hint,MAXTEXTLENGTH);
         }
         else
         {
@@ -761,16 +764,16 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     switch (optionsmenuchoice)
     {
         case 'q': printf("Enter new question text for this entry (max %i chars):\n",maxtextlength);
-        entry->question=gettextfromkeyboard(entry->question,MAXTEXTLENGTH);
+        entry->question=wgettextfromkeyboard(/*FISH!*/stdscr,entry->question,MAXTEXTLENGTH);
         break;
         case 'a': printf("Enter new answer text for this entry (max %i chars):\n",maxtextlength);
-        entry->answer=gettextfromkeyboard(entry->answer,MAXTEXTLENGTH);
+        entry->answer=wgettextfromkeyboard(/*FISH!*/stdscr,entry->answer,MAXTEXTLENGTH);
         break;
         case 'i': printf("Enter new info for this entry (max %i chars):\n",maxtextlength);
-        entry->info=gettextfromkeyboard(entry->info,MAXTEXTLENGTH);
+        entry->info=wgettextfromkeyboard(/*FISH!*/stdscr,entry->info,MAXTEXTLENGTH);
         break;
         case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
-        entry->hint=gettextfromkeyboard(entry->hint,MAXTEXTLENGTH);
+        entry->hint=wgettextfromkeyboard(/*FISH!*/stdscr,entry->hint,MAXTEXTLENGTH);
         break;
         case 'p': if(list==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
                   else
@@ -861,7 +864,7 @@ void testme()
         printf("Your Translation");
         if (currententry->hint) printf(" (or 'h' for hint)");
         printf(":\n\n\t");
-        gettextfromkeyboard(youranswer,MAXTEXTLENGTH);
+        wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH);
 
         if (currententry->hint) //if there's a hint available...
         {
@@ -870,7 +873,7 @@ void testme()
             {
                 usedhint = 1; //...mark as used
                 printf("\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
-                gettextfromkeyboard(youranswer,MAXTEXTLENGTH); //prompt for answer
+                wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH); //prompt for answer
             }
         }
 
@@ -972,7 +975,7 @@ void testme()
     return;
 }
 
-char * gettextfromkeyboard(char * target,int maxchars)
+char * wgettextfromkeyboard(WINDOW * window, char * target,int maxchars)
 {
     int i =0;
     int memoryallocated_flag =0; //to avoid freeing memory allocated outside function, pointed out by stackoverflow.com/users/688213/mrab
@@ -983,19 +986,9 @@ char * gettextfromkeyboard(char * target,int maxchars)
         target=(char *)malloc(maxchars+1);
         if (!target) {printf("Memory allocation failed!");return NULL;}//return null if failed
     }
-    ch = getchar();
-    if (ch=='\n' && memoryallocated_flag) {free(target);return NULL;}//if zero length, free mem (if allocated inside function) and return null pointer
-    while (!isalnum(ch))//cycle forward past white space
-    {
-        ch=getchar();
-        if (ch=='\n' && memoryallocated_flag) {free(target);return NULL;}//if all white space, free mem (if allocated inside function) and return null pointer
-    }
-    while (ch!='\n' && i<(maxchars-1))
-    {
-        target[i++]=ch;
-        ch=getchar();
-    }
-    target[i]='\0';
+    echo();
+    wgetnstr(window,target,maxchars);
+    noecho();
     return target;
 }
 
@@ -1178,6 +1171,7 @@ void startup()//sets up curses mode, erroring if no can do
     init_pair(1,COLOR_WHITE,COLOR_BLUE);
     init_pair(2,COLOR_BLACK,COLOR_WHITE);
     init_pair(3,COLOR_WHITE,COLOR_RED);
+    init_pair(4,COLOR_WHITE,COLOR_GREEN);
 
     freopen ("errorlog.txt","a",stderr);
 
@@ -1225,6 +1219,40 @@ WINDOW * nicebigwindow()//creates a bordered, blue window, taking up most of the
     keypad(wtemp,TRUE);
     return wtemp;
 }
+
+void popupinfo(int colour,char * title,char * message)//pops up a window with the given colour, title and text
+{
+    WINDOW * wbpopup, * wpopup;
+    PANEL * ppopup;
+    int width, height;
+    
+    width=textwidth(message);
+    getmaxyx(stdscr,nlines,ncols);
+    if (width>ncols-16)width=ncols-16;
+    height=textheight(message,width)+4;
+    width+=8;
+    wbpopup = newwin(height,width,(nlines-height)/2,(ncols-width)/2);
+    if(!wpopup)outofmemory();
+    ppopup = new_panel(wbpopup);
+    wattrset(wbpopup,COLOR_PAIR(colour));
+    werase(wbpopup);
+    wbkgd(wbpopup,COLOR_PAIR(colour));
+    box(wbpopup,0,0);
+    windowtitle(wbpopup,title);
+    wpopup = innerwindow(wbpopup);
+    
+    wprintw(wpopup,message);
+    update_panels();
+    doupdate();
+    wgetch(wpopup);
+    
+    delwin(wpopup);
+    del_panel(ppopup);
+    delwin(wbpopup);
+    update_panels();
+    doupdate();
+}
+
 
 void popuperror(char * errormessage)//pops up an error and makes a note in the log
 {
