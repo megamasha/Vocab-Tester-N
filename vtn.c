@@ -75,8 +75,8 @@ int removefromlist(struct vocab * entry, struct listinfo * list,int freeup);//re
 int unloaddatabase();//clears all vocab from memory, ready to load another database
 void reloaddatabase();//optionally saves and unloads present database before loading another 
 void reindex (struct listinfo * list);//necessary to stop gaps in the numbering system, which could cause random vocab selection to fail
-void savedatabase();//does what it says on the tin, optionally allows user to give filename, which is passed to writeliststofile
-int writeliststofile(char * outputfilename);//output a file from memory to disk
+void savedatabase();//does what it says on the tin, optionally allows user to give filename, which is passed to wwriteliststofile
+int wwriteliststofile(WINDOW * window,char * outputfilename);//output a file from memory to disk
 void databasemenu();//provides ability to add entries to database, and edit entries from outside testing mode
 struct vocab * createnewvocab();//allows user to create now vocab record within the program
 struct vocab * vocabsearch(char * searchstring);//returns a pointer to vocab entry if the question or answer matches given search string
@@ -134,7 +134,7 @@ void loaddatabase()//select which database to load
         }
         else //alternative options
         {
-            wprintw(wloaddatabase,"Not loading ,~sv database.\n");
+            wprintw(wloaddatabase,"Not loading .~sv database.\n");
             if (getyesorno("Import .csv file instead?")) //import .csv file
             {
                 separator = ',';
@@ -147,7 +147,7 @@ void loaddatabase()//select which database to load
                 usingfilename = 0;
             }
         }
-        if (usingfilename) inputfilename=validfilename(wgettextfromkeyboard(/*FISH!*/stdscr,inputfilename,MAXTEXTLENGTH),extension);
+        if (usingfilename) inputfilename=validfilename(wgettextfromkeyboard(wloaddatabase,inputfilename,MAXTEXTLENGTH),extension);
     }
     if (usingfilename)
     {
@@ -435,48 +435,64 @@ void reloaddatabase()//optionally saves and unloads present database before load
     loaddatabase();
 }
 
-//FISH! TODO continue converting from here...
-
 void savedatabase()
 {
     char * deffilename = DOUTPUTFILENAME;
     char * outputfilename = (char *)malloc(MAXTEXTLENGTH+1);
-    printf("Saving...\n");
-    if (!outputfilename) {fprintf(stderr, "Error allocating memory for filename input");exit(1);}
+    WINDOW * wbsavedatabase, * wsavedatabase;
+    PANEL * psavedatabase;
+
+    wbsavedatabase = nicebigwindow();
+    psavedatabase = new_panel(wbsavedatabase);
+    windowtitle(wbsavedatabase,"Save Database");
+    wsavedatabase = innerwindow(wbsavedatabase);
+
+    wprintw(wsavedatabase,"Saving...\n");
+    update_panels();
+    doupdate();
+
+    if (!outputfilename) outofmemory();
     strcpy(outputfilename,deffilename);
-    printf("WARNING: If you provide a database filename that already exists,\nthe database will be OVERWRITTEN!\n\nSave to most recently lodaded database: %s? (y/n)",currentfilename);
-    if(getyesorno("FISH!"))
+    popupinfo(3,"WARNING:","If you provide a database filename that already exists, that database will be OVERWRITTEN!");
+    sprintf(passingstring,"Save to most recently loaded database: %s?",currentfilename);
+    if(getyesorno(passingstring))
     {
         strcpy(outputfilename,currentfilename);
     }
     else
     {
-        printf("Save to default database: %s? (y/n)",outputfilename);
-        if (!getyesorno("FISH!"))//user specifies filename for database output
+        sprintf(passingstring,"Save to default database: %s? (y/n)",outputfilename);
+        if (!getyesorno(passingstring))//user specifies filename for database output
         {
-            printf("A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
-            outputfilename=validfilename(wgettextfromkeyboard(/*FISH!*/stdscr,outputfilename,MAXTEXTLENGTH),".~sv");
+            wprintw(wsavedatabase,"A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
+            outputfilename=validfilename(wgettextfromkeyboard(wsavedatabase,outputfilename,MAXTEXTLENGTH),".~sv");
         }
     }
-    if (!writeliststofile(outputfilename)) printf("Error while saving!!\n"); //print error message if writeliststofile returned 0
+    if (!wwriteliststofile(wsavedatabase,outputfilename)) popuperror("Error while saving!!"); //print error message if wwriteliststofile returned 0
     else changedflag = 0;
     free(outputfilename);
-    clearinputbuffer();
+    getmaxyx(wsavedatabase,nlines,ncols);
+    mvwprintw(wsavedatabase,nlines-1,0,"Press any key to continue...");
+    wgetch(wsavedatabase);
+    delwin(wsavedatabase);
+    del_panel(psavedatabase);
+    delwin(wbsavedatabase);
+    return;
 }
 
-int writeliststofile(char * outputfilename)
+int wwriteliststofile(WINDOW * window,char * outputfilename)
 {
     int i,counter=0;
     struct listinfo * list;
     struct vocab * entry;
     if (!(outputfile = fopen(outputfilename, "w")))
     {
-        printf ("Error accessing output file!\n");
+        popuperror("Error accessing output file!");
         return 0;
     }
     else
     {
-        printf("Saving...\n");
+        wprintw(window,"Saving...\n");
         for (i=0;i<=3;i++)
         {
             switch (i)
@@ -485,7 +501,7 @@ int writeliststofile(char * outputfilename)
                 case 1: list = &norm;break;
                 case 2: list = &known;break;
                 case 3: list = &old;break;
-                default: printf("Loop Error!\n");break;
+                default: popuperror("Loop Error!");break;
             }
             entry=list->head;
             while (entry!=NULL)
@@ -501,10 +517,12 @@ int writeliststofile(char * outputfilename)
             }
         }
         fclose(outputfile);
-        printf("...finished. %i entries saved to file: %s\n",counter,outputfilename);
+        wprintw(window,"...finished. %i entries saved to file: %s\n",counter,outputfilename);
         return 1;
     }
 }
+
+//FISH! TODO Continue Converting from here
 
 void databasemenu()//provides ability to add entries to database, and edit entries from outside testing mode
 {
@@ -1442,7 +1460,7 @@ int main(int argc, char* argv[])
                         break;
             //case 'v': showscore();break;
             //case 't': testme(); break;
-            //case 's': savedatabase();break;
+            case 's': savedatabase();break;
             case 'l': reloaddatabase();break;
             //case 'm': databasemenu(); break;
             //default: wprintw(wmainmenu,"Invalid choice. Please try again.\n");break;
