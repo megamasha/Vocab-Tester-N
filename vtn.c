@@ -522,87 +522,142 @@ int wwriteliststofile(WINDOW * window,char * outputfilename)
     }
 }
 
-//FISH! TODO Continue Converting from here
-
 void databasemenu()//provides ability to add entries to database, and edit entries from outside testing mode
 {
+    WINDOW * wbdatabasemenu, * wdatabasemenu;
+    PANEL * pdatabasemenu;
+    ITEM ** databasemenuitems;
+    MENU * databasemenu;
     struct vocab * entry;
-    char menuchoice = '\n';
+    int menuchoice = '\n';
     int menuresult=1;
     char * searchstring = (char *)malloc(MAXTEXTLENGTH+1);
-    if (!searchstring) {fprintf(stderr,"Unable to allocate memory!\n");exit(1);}
+    if (!searchstring) popuperror("Unable to allocate memory! for search string.");
+    
+    char * databasemenuchoices[][2] = //strings for menu
+    {
+        {"a:","Add Vocab"},
+        {"t:","Edit or delete vocab"},
+        {"x:","Exit to main menu"}
+    };
+    char databasemenupointers[] =
+    {
+        'a',
+        'e',
+        'x'
+    };
+    
+    ITEM * ITEMselected; //this will point to selected item
+    char * pselected; //this will point to the char attached to selected item
+    
+    int i,numberofchoices = ARRAY_SIZE(databasemenuchoices);    
+    if(!(databasemenuitems = (ITEM**)calloc(numberofchoices+1,sizeof(ITEM*)))) outofmemory();
+    for(i=0;i < numberofchoices;i++)
+    {
+        databasemenuitems[i] = new_item(databasemenuchoices[i][0], databasemenuchoices[i][1]);
+        set_item_userptr (databasemenuitems[i],&databasemenupointers[i]);
+    }
+    databasemenuitems[numberofchoices] = (ITEM *)NULL;
+
+    wbdatabasemenu = nicebigwindow();
+    pdatabasemenu = new_panel(wbdatabasemenu);
+    wdatabasemenu = innerwindow(wbdatabasemenu);
+    windowtitle(wbdatabasemenu,"Database Management Menu");
+    databasemenu = new_menu(databasemenuitems);
+    set_menu_win(databasemenu,wdatabasemenu);
+    set_menu_back(databasemenu,COLOR_PAIR(1));
+    menu_opts_off(databasemenu,O_NONCYCLIC);
+    post_menu(databasemenu);
+    update_panels();
+    doupdate();
+
     while (menuchoice!='x')
     {
         entry = NULL;
-        clrscr();
-        printf("Vocab database management menu:\n\n\ta: Add vocab\n\te: Edit or delete vocab\n\tx: Exit to main menu\n\n");
-        menuchoice = getchar();
-        clearinputbuffer();
+        menuchoice = wgetch(wdatabasemenu);
+        if (menuchoice == 10)
+        {
+            ITEMselected = current_item(databasemenu);
+            pselected = item_userptr(ITEMselected);
+            menuchoice = *pselected;
+        }
         switch (menuchoice)
         {
-            case 'a': if (createnewvocab()) {changedflag = 1;printf("Vocab successfully added.");}
-                      else printf("Vocab creation failed!");
-                      clearinputbuffer();
+            case KEY_UP: menu_driver(databasemenu,REQ_UP_ITEM);
+                        break;
+            case KEY_DOWN: menu_driver(databasemenu,REQ_DOWN_ITEM);
+                        break;
+            case 'a': if (createnewvocab()) {changedflag = 1;popupinfo(4,"Success!","Vocab successfully added.");}
+                      else popuperror("Vocab creation failed!");
                       break;
-            case 'e': changedflag = 1;printf("Entry to edit or delete:");
-                searchstring=wgettextfromkeyboard(/*FISH!*/stdscr,searchstring,MAXTEXTLENGTH);
+            case 'e': changedflag = 1;wmove(wdatabasemenu,4,0);wprintw(wdatabasemenu,"Entry to edit or delete:\n");clrtoeol();
+                searchstring=wgettextfromkeyboard(wdatabasemenu,searchstring,MAXTEXTLENGTH);
                 if (searchstring) entry = vocabsearch(searchstring);
-                if (entry!=NULL)
+                if (entry)
                 {
                     menuresult=1;
                     while (menuresult==1)
                     {
                         menuresult = editormenu(entry,0);
                     }
-                    if (menuresult==-1) {free(searchstring);return;}
+                    if (menuresult==-1) goto cleanup;
                 }
-                else printf("No entry selected\n");
-                clearinputbuffer();break;
+                else popupinfo(2,"","No entry selected");
+                break;
             case 'x': break;
-            default: printf("Invalid choice. Please try again\n");clearinputbuffer();
         }
     }
+    cleanup:
     free(searchstring);
+    unpost_menu(databasemenu);
+    free_menu(databasemenu);
+    for (i=0;i<numberofchoices;i++)
+    free_item(databasemenuitems[i]);
+    del_panel(pdatabasemenu);
+    delwin(wdatabasemenu);
+    delwin(wbdatabasemenu);
 }
 
 struct vocab * createnewvocab()//allows user to create now vocab record within the program
 {
+    WINDOW * wbcreatevocab, * wcreatevocab;
+    PANEL * pcreatevocab;
     struct vocab * newvocab;
     struct listinfo * newvocablist = &norm;
+    
+    wbcreatevocab = nicebigwindow();
+    pcreatevocab = new_panel(wbcreatevocab);
+    wcreatevocab = innerwindow(wbcreatevocab);
+    windowtitle(wbcreatevocab,"Create new vocab");
+    
     newvocab = (struct vocab *)malloc(sizeof(struct vocab));
-    if (!newvocab)
-    {
-        printf("Memory allocation failed!\n");
-        return NULL;
-    }
+    if (!newvocab) outofmemory();
     else
     {
         newvocab->question=newvocab->answer=newvocab->info=newvocab->hint=NULL;
-        printf("Enter question text for this entry (max %i chars):\n",maxtextlength);
-        newvocab->question=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->question,MAXTEXTLENGTH);
-        printf("Enter answer text for this entry (max %i chars):\n",maxtextlength);
-        newvocab->answer=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->answer,MAXTEXTLENGTH);
-        printf("Would you like to add additional info for this entry?(y/n)");
-        if (getyesorno("FISH!"))
+        wprintw(wcreatevocab,"Enter question text for this entry (max %i chars):\n",maxtextlength);
+        newvocab->question=wgettextfromkeyboard(wcreatevocab,newvocab->question,MAXTEXTLENGTH);
+        wprintw(wcreatevocab,"Enter answer text for this entry (max %i chars):\n",maxtextlength);
+        newvocab->answer=wgettextfromkeyboard(wcreatevocab,newvocab->answer,MAXTEXTLENGTH);
+        if (getyesorno("Would you like to add additional info for this entry?"))
         {
-            printf("Enter info for this entry (max %i chars):\n",maxtextlength);
-            newvocab->info=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->info,MAXTEXTLENGTH);
+            wprintw(wcreatevocab,"Enter info for this entry (max %i chars):\n",maxtextlength);
+            newvocab->info=wgettextfromkeyboard(wcreatevocab,newvocab->info,MAXTEXTLENGTH);
         }
         else
         {
             newvocab->info=NULL;
-            printf("No info added\n");
+            wprintw(wcreatevocab,"No info added\n");
         }
-        printf("Would you like to add a hint to help you remember this entry?(y/n)");
-        if (getyesorno("FISH!"))
+        if (getyesorno("Would you like to add a hint to help you remember this entry?"))
         {
-            printf("Enter hint for this entry (max %i chars):\n",maxtextlength);
-            newvocab->hint=wgettextfromkeyboard(/*FISH!*/stdscr,newvocab->hint,MAXTEXTLENGTH);
+            wprintw(wcreatevocab,"Enter hint for this entry (max %i chars):\n",maxtextlength);
+            newvocab->hint=wgettextfromkeyboard(wcreatevocab,newvocab->hint,MAXTEXTLENGTH);
         }
         else
         {
             newvocab->hint=NULL;
-            printf("No hint added\n");
+            wprintw(wcreatevocab,"No hint added\n");
         }
         newvocab->right=0;
         newvocab->counter=0;
@@ -610,12 +665,27 @@ struct vocab * createnewvocab()//allows user to create now vocab record within t
 
         if (newvocab->question==NULL||newvocab->answer==NULL) //minimal validation for valid record
         {
-            fprintf(stderr,"ERROR: Question and/or answer are blank!\n");
+            popuperror("Question and/or answer are blank!");
+            del_panel(pcreatevocab);
+            delwin(wcreatevocab);
+            delwin(wbcreatevocab);
             return NULL;
         }
 
-        if (addtolist(newvocab,newvocablist)) return newvocab;
-        else return NULL;
+        if (addtolist(newvocab,newvocablist))
+        {
+            del_panel(pcreatevocab);
+            delwin(wcreatevocab);
+            delwin(wbcreatevocab);
+            return newvocab;
+        }
+        else
+        {
+            del_panel(pcreatevocab);
+            delwin(wcreatevocab);
+            delwin(wbcreatevocab);
+            return NULL;
+        }
     }
 }
 
@@ -632,7 +702,7 @@ struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entr
             case 1: list = &norm;break;
             case 2: list = &known;break;
             case 3: list = &old;break;
-            default: printf("Loop Error!\n");break;
+            default: popuperror("Loop Error!");break;
         }
         entry=list->head;
         while (entry!=NULL)
@@ -653,7 +723,7 @@ struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entr
             case 1: list = &norm;break;
             case 2: list = &known;break;
             case 3: list = &old;break;
-            default: printf("Loop Error!\n");break;
+            default: popuperror("Loop Error!");break;
         }
         entry=list->head;
         while (entry!=NULL)
@@ -669,25 +739,29 @@ struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entr
     if (numberofmatches == 1) return match;
     else if (numberofmatches)
     {
-        printf("More than one match found. Show best matches? (y/n)");
-        if (getyesorno("FISH!")) return vocabfuzzysearch(searchstring);
+        if (getyesorno("More than one match found. Show best matches?")) return vocabfuzzysearch(searchstring);
     }
     else
     {
-        printf("No exact matches found. Perform fuzzy search? (y/n)");
-        if (getyesorno("FISH!")) return vocabfuzzysearch(searchstring);
+        if (getyesorno("No exact matches found. Perform fuzzy search?")) return vocabfuzzysearch(searchstring);
     }
     return NULL;
 }
 
+//FISH! TODO Continue Converting from here
+
 struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab entry that has the largest number of innitial, non case-sensitive characters
 {
+    WINDOW * wbfuzzysearch, * wfuzzysearch;
+    PANEL * pfuzzysearch;
+    ITEM ** fuzzysearchmenuitems;
     struct vocab * entry;
     struct fuzzymatch matches[10];
     struct fuzzymatch * worstmatch = &matches[0];
     struct listinfo * list;
     int i,j,matchescounter=0,currentscore=0;
     int substringlength[2];//FISH! TODO Can the separate while loops below be combined using 'substringlength++'?
+    fuzzysearchmenuitems=calloc(11,(ITEM**)sizeof(ITEM*));
 
     //innitialise all fuzzymatches.
     for(i=0;i<10;i++) {matches[i].entry = NULL;matches[i].score = 0;}
@@ -701,7 +775,7 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
             case 1: list = &norm;break;
             case 2: list = &known;break;
             case 3: list = &old;break;
-            default: printf("Loop Error!\n");break;
+            default: popuperror("Loop Error!");break;
         }
         entry=list->head;
         while (entry!=NULL)
@@ -740,6 +814,11 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
         }
     }
     //display numbered list of questions and answers for these matches, asking the user to decide which they'd like to select (0 for none)
+    wbfuzzysearch=nicebigwindow();
+    windowtitle(wbfuzzysearch,"Fuzzy Search");
+    pfuzzysearch = new_panel(wbfuzzysearch);
+    wfuzzysearch=innerwindow(wbfuzzysearch);
+    
     for(i=0;i<10;i++)
     {
         if (matches[i].entry)
@@ -748,7 +827,7 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
             printf("Score: %i. Answer: '%s'.\n",matches[i].score,matches[i].entry->answer);
         }
     }
-    printf("\nEnter the number of the entry you'd like to select, or 0 (zero) to cancel:");
+    printf("\nEnter the number of the entry you'd like to select, or any other key to cancel:");
     scanf("%d",&i);//FISH! TODO Validate!! (by some cumbersomely elaborate function or other)
     if(i<1||i>10) return NULL;
     //return a pointer to the user's choice
@@ -1200,11 +1279,11 @@ void startup()//sets up curses mode, erroring if no can do
 
 void shutdown()//asks about saving if appropriate and exits
 {
-    /*    if (changedflag) //FISH! TODO
-     *   {
-     *       printf("Your database has changed (or you have given more answers) since you last saved.\nIf you continue without saving, these changes will be lost!\n\nSave now? (y/n)");
-     *       if (getyesorno()) savedatabase();
-}*/
+    if (changedflag)
+    {
+        if (getyesorno("Your database has changed (or you have given more answers) since you last saved.\nIf you continue without saving, these changes will be lost!\n\nSave now?"))
+            savedatabase();
+    }
     erase();
     printw("Bye for now!\n\nPress any key to exit. (Where's the 'any' key?)");
     refresh();
@@ -1432,7 +1511,6 @@ int main(int argc, char* argv[])
         set_item_userptr (mainmenuitems[i],mainmenupointers[i]);
     }
     mainmenuitems[numberofchoices] = (ITEM *)NULL;
-    wmove(wmainmenu,0,0);
     if (!welcomeflag) {wprintw(wmainmenu,"Welcome to the ");welcomeflag++;}
     wattron(wmainmenu,A_BOLD);
     wprintw(wmainmenu,"Vocab Test, Version N.");
@@ -1462,14 +1540,19 @@ int main(int argc, char* argv[])
             //case 't': testme(); break;
             case 's': savedatabase();break;
             case 'l': reloaddatabase();break;
-            //case 'm': databasemenu(); break;
+            case 'm': databasemenu(); break;
             //default: wprintw(wmainmenu,"Invalid choice. Please try again.\n");break;
         }
         update_panels();
         doupdate();
     }
+    unpost_menu(mainmenu);
+    free_menu(mainmenu);
+    for (i=0;i<numberofchoices;i++)
+        free_item(mainmenuitems[i]);
     del_panel(pmainmenu);
     delwin(wmainmenu);
+    delwin(wbmainmenu);
     shutdown();
     return 0;
 }

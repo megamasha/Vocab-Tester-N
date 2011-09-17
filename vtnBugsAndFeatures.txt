@@ -1,6 +1,7 @@
 Vocab Tester N:
 
     Give it a TUI
+    Yes before No in 'getyesorno'
 
 Potential improvements:
 
