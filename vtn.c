@@ -755,13 +755,15 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
     WINDOW * wbfuzzysearch, * wfuzzysearch;
     PANEL * pfuzzysearch;
     ITEM ** fuzzysearchmenuitems;
-    struct vocab * entry;
+    ITEM * ITEMselected;
+    MENU * fuzzysearchmenu;
+    struct vocab * entry, * returnvalue = NULL, * pselected;
     struct fuzzymatch matches[10];
     struct fuzzymatch * worstmatch = &matches[0];
     struct listinfo * list;
     int i,j,matchescounter=0,currentscore=0;
     int substringlength[2];//FISH! TODO Can the separate while loops below be combined using 'substringlength++'?
-    fuzzysearchmenuitems=calloc(11,(ITEM**)sizeof(ITEM*));
+    if (!(fuzzysearchmenuitems=(ITEM**)calloc(11,sizeof(ITEM*)))) outofmemory();
 
     //innitialise all fuzzymatches.
     for(i=0;i<10;i++) {matches[i].entry = NULL;matches[i].score = 0;}
@@ -819,19 +821,50 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
     pfuzzysearch = new_panel(wbfuzzysearch);
     wfuzzysearch=innerwindow(wbfuzzysearch);
     
-    for(i=0;i<10;i++)
+    i=0;
+    while (i<10)
     {
         if (matches[i].entry)
         {
-            printf("Option %d: Question: '%s'.\n",(i+1),matches[i].entry->question);
-            printf("Score: %i. Answer: '%s'.\n",matches[i].score,matches[i].entry->answer);
+            fuzzysearchmenuitems[i]=new_item(matches[i].entry->question,matches[i].entry->answer);
+            set_item_userptr(fuzzysearchmenuitems[i],matches[i].entry);
+            i++; continue;
+        }
+        else break;
+    }
+    fuzzysearchmenuitems[i]=NULL;
+    fuzzysearchmenu=new_menu(fuzzysearchmenuitems);
+    set_menu_win(fuzzysearchmenu,wfuzzysearch);
+    set_menu_sub(fuzzysearchmenu,derwin(wfuzzysearch,0,0,0,0));
+    set_menu_back(fuzzysearchmenu,COLOR_PAIR(1));
+    menu_opts_off(fuzzysearchmenu,O_NONCYCLIC);
+    set_menu_format(fuzzysearchmenu, 10, 1);
+    post_menu(fuzzysearchmenu);
+    update_panels();
+    doupdate();
+    while (1)
+    {
+        i=wgetch(wfuzzysearch);
+        switch (i)
+        {
+            case 10: ITEMselected = current_item(fuzzysearchmenu);
+                    returnvalue=item_userptr(ITEMselected);
+                    goto cleanup;
+                    break;
+            case KEY_UP: menu_driver(fuzzysearchmenu,REQ_UP_ITEM); break;
+            case KEY_DOWN: menu_driver(fuzzysearchmenu,REQ_DOWN_ITEM); break;
+            default: goto cleanup;break;
         }
     }
-    printf("\nEnter the number of the entry you'd like to select, or any other key to cancel:");
-    scanf("%d",&i);//FISH! TODO Validate!! (by some cumbersomely elaborate function or other)
-    if(i<1||i>10) return NULL;
-    //return a pointer to the user's choice
-    else return matches[i-1].entry;
+    cleanup:
+    unpost_menu(fuzzysearchmenu);
+    free_menu(fuzzysearchmenu);
+    for (i=0;i<10;i++)
+    if (fuzzysearchmenuitems[i]) free_item(fuzzysearchmenuitems[i]);
+    del_panel(pfuzzysearch);
+    delwin(wfuzzysearch);
+    delwin(wbfuzzysearch);
+    return returnvalue;
 }
 
 int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to show menu again, 0 to close the menu or -1 to return to the main menu
