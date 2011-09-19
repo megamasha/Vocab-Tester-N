@@ -901,7 +901,7 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     };
     struct listinfo * list;
     int optionsmenuchoice = '\n';
-    int i,j, showagain = 1, numberofchoices = ARRAY_SIZE(editormenuchoices);
+    int i,j, returnvalue = 1, numberofchoices = ARRAY_SIZE(editormenuchoices);
     changedflag = 1;
     if (entry==NULL) {popuperror("Somehow received blank entry! Fix me.");return 0;}
     if (entry->known==0) list = &n2l;
@@ -918,6 +918,9 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
         set_item_userptr (editormenuitems[i-j],&editormenupointers[i]);
     }
     editormenuitems[(i-j)] = (ITEM *)NULL;
+    //i is number of items in 'choices' array
+    //j is number of those NOT added to menu
+    j=i-j; //j is now number of items added to menu
 
     wbeditormenu=nicebigwindow();
     windowtitle(wbeditormenu,"Vocab Editor");
@@ -951,49 +954,66 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     }
     switch (optionsmenuchoice)
     {
-        case 'q': wprintw(/*FISH!*/stdscr,"Enter new question text for this entry (max %i chars):\n",maxtextlength);
-        entry->question=wgettextfromkeyboard(/*FISH!*/stdscr,entry->question,MAXTEXTLENGTH);
+        case 'q': mvwprintw(weditormenu,8+j,0,"Enter new question text for this entry (max %i chars):\n",maxtextlength);
+        entry->question=wgettextfromkeyboard(weditormenu,entry->question,MAXTEXTLENGTH);
         break;
-        case 'a': wprintw(/*FISH!*/stdscr,"Enter new answer text for this entry (max %i chars):\n",maxtextlength);
-        entry->answer=wgettextfromkeyboard(/*FISH!*/stdscr,entry->answer,MAXTEXTLENGTH);
+        case 'a': mvwprintw(weditormenu,8+j,0,"Enter new answer text for this entry (max %i chars):\n",maxtextlength);
+        entry->answer=wgettextfromkeyboard(weditormenu,entry->answer,MAXTEXTLENGTH);
         break;
-        case 'i': wprintw(/*FISH!*/stdscr,"Enter new info for this entry (max %i chars):\n",maxtextlength);
-        entry->info=wgettextfromkeyboard(/*FISH!*/stdscr,entry->info,MAXTEXTLENGTH);
+        case 'i': mvwprintw(weditormenu,8+j,0,"Enter new info for this entry (max %i chars):\n",maxtextlength);
+        entry->info=wgettextfromkeyboard(weditormenu,entry->info,MAXTEXTLENGTH);
         break;
-        case 'h': wprintw(/*FISH!*/stdscr,"Enter new hint for this entry (max %i chars):\n",maxtextlength);
-        entry->hint=wgettextfromkeyboard(/*FISH!*/stdscr,entry->hint,MAXTEXTLENGTH);
+        case 'h': mvwprintw(weditormenu,8+j,0,"Enter new hint for this entry (max %i chars):\n",maxtextlength);
+        entry->hint=wgettextfromkeyboard(weditormenu,entry->hint,MAXTEXTLENGTH);
         break;
-        case 'p': if(list==&n2l)wprintw(/*FISH!*/stdscr,"Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
+        case 'p': if(list==&n2l)popupinfo(3,"","Already marked as priority!"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
                   else
                   {
                       removefromlist(entry,list,0);
                       entry->counter = 0;
                       list=&n2l;
                       addtolist(entry,list);
-                      wprintw(/*FISH!*/stdscr,"This entry will be brought up more often\n");
+                      popupinfo(4,"","This entry will be brought up more often");
                   }
                   break;
-        case 'd': wprintw(/*FISH!*/stdscr,"Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
-                  if (getyesorno("FISH!")) {removefromlist(entry,list,1);wprintw(/*FISH!*/stdscr,"Entry deleted!\n");return 0;}
-                  else wprintw(/*FISH!*/stdscr,"Entry was NOT deleted.\n");
+        case 'd': if (getyesorno("Are you sure you want to delete this entry?\nOnce you save, this will be permanent!"))
+                  {
+                      removefromlist(entry,list,1);
+                      popupinfo(2,"","Entry deleted!");
+                      returnvalue = 0;
+                      goto cleanup;
+                  }
+                  else popupinfo(2,"","Entry was NOT deleted.");
                   break;
-        case 'x': return -1;
+        case 'x': returnvalue = -1;
+                  goto cleanup;
         break;
-        case 't': if (fromtest) return 0;
-                  else wprintw(/*FISH!*/stdscr,"You are not currently testing.\nReturn to the main menu and select 'Test me!'.\n");
+        case 't': if (fromtest) {returnvalue = 0; goto cleanup;}
+                  else popupinfo(3,"Database Management:","You are not currently testing.\nReturn to the main menu and select 'Test me!'.");
         break;
-        case 'r': if (fromtest) wprintw(/*FISH!*/stdscr,"Database management is not available from testing mode.\nReturn to the main menu and select 'Manage database'.\n");
-                  else return 0;
+        case 'r': if (fromtest) popupinfo(3,"Testing Mode:","Database management is not available from testing mode.\nReturn to the main menu and select 'Manage database'.");
+                  else {returnvalue = 0;goto cleanup;}
         break;
         default: popupinfo(2,"Sorry:","Invalid choice");
     }
-    wprintw(/*FISH!*/stdscr,"Select again from the options menu? (y/n)");
-    if (getyesorno("FISH!")) return 1;
+    if (getyesorno("Select again from the options menu?")) returnvalue = 1;
     else
     {
-        if (fromtest) wprintw(/*FISH!*/stdscr,"Continue testing?(y/n)"); else printf ("Return to database management menu?(y/n)");
-        if (getyesorno("FISH!")) return 0; else return -1;
+        if (fromtest) i = getyesorno("Continue testing?");
+        else i = getyesorno("Return to database management menu?");
+        if (i) returnvalue = 0; else returnvalue = -1;
     }
+    cleanup:
+    unpost_menu(editormenu);
+    for (i=0;i<j;i++)
+        free_item(editormenuitems[i]);
+    free(editormenuitems);
+    del_panel(peditormenu);
+    delwin(weditormenu);
+    delwin(wbeditormenu);
+    update_panels();
+    doupdate();
+    return returnvalue;
 }
 
 void testme()
