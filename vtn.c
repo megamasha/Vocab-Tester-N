@@ -429,7 +429,6 @@ void reindex (struct listinfo * list)
 
 void reloaddatabase()//optionally saves and unloads present database before loading another
 {
-    //printf("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!\n");
     if (getyesorno("Do you want to save your current vocab before loading another database?\nWARNING: Selecting no could lose all data since last save!!")) savedatabase();
     if (getyesorno("Do you want to unload the current database from memory before loading a new one?\nIf you do not, the current database and the one you are loading will be merged,\nwhich could cause duplicates.")) unloaddatabase();
     loaddatabase();
@@ -537,7 +536,7 @@ void databasemenu()//provides ability to add entries to database, and edit entri
     char * databasemenuchoices[][2] = //strings for menu
     {
         {"a:","Add Vocab"},
-        {"t:","Edit or delete vocab"},
+        {"e:","Edit or delete vocab"},
         {"x:","Exit to main menu"}
     };
     char databasemenupointers[] =
@@ -748,8 +747,6 @@ struct vocab * vocabsearch(char * searchstring)//returns a pointer to vocab entr
     return NULL;
 }
 
-//FISH! TODO Continue Converting from here
-
 struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab entry that has the largest number of innitial, non case-sensitive characters
 {
     WINDOW * wbfuzzysearch, * wfuzzysearch;
@@ -867,73 +864,134 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
     return returnvalue;
 }
 
+//FISH! TODO Continue Converting from here
+
 int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current entry, fromtest is 1 when run from within the test and 0 when from the menu, returns 1 to show menu again, 0 to close the menu or -1 to return to the main menu
 {
+    WINDOW * wbeditormenu, * weditormenu;
+    PANEL * peditormenu;
+    ITEM ** editormenuitems;
+    ITEM * ITEMselected;
+    char * pselected;
+    MENU * editormenu;
+    char * editormenuchoices[][2] =
+    {
+        {"q:","modify the question phrase displayed for translation"},
+        {"a:","change the answer phrase you must provide"},
+        {"i:","add/modify additional info for this entry"},
+        {"h:","add/modify the hint for this entry"},
+        {"p:","mark this entry as high priority to learn"},
+        {"d:","delete this entry from the database"},
+        {"t:","close this menu and continue testing"},
+        {"r:","return to the database management menu"},
+        {"x:","return to the main menu"},
+        {"x:","end testing and return to the main menu"}
+    };
+    char editormenupointers[] =
+    {
+        'q',
+        'a',
+        'i',
+        'h',
+        'p',
+        'd',
+        't',
+        'r',
+        'x'
+    };
     struct listinfo * list;
-    char optionsmenuchoice = '\n';
-    int showagain = 1;
+    int optionsmenuchoice = '\n';
+    int i,j, showagain = 1, numberofchoices = ARRAY_SIZE(editormenuchoices);
     changedflag = 1;
-    if (entry==NULL) {fprintf(stderr,"Somehow received blank entry! Fix me.\n");return 0;}
-    clrscr();
+    if (entry==NULL) {popuperror("Somehow received blank entry! Fix me.");return 0;}
     if (entry->known==0) list = &n2l;
     else if (entry->known==1) list = &norm;
     else if (entry->known==2) list = &known;
     else if (entry->known==3) list = &old;
-    else {fprintf(stderr,"Unable to deduce list!!");exit(1);}
-    printf("Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",entry->question,entry->answer);
-    if (entry->info) printf("Info: %s\n",entry->info);else printf("No info.\n");
-    if (entry->hint) printf("Hint: %s\n\n",entry->hint);else printf("No hint.\n\n");
-    printf("Options Menu:\n\nType q to modify the question phrase displayed for translation.\nType a to change the answer phrase you must provide.\nType i to add/modify additional info for this entry.\nType h to add/modify the hint for this entry.\nType p to mark this entry as high priority to learn.\nType d to delete this entry from the database.\n");
-    if (fromtest) printf("Type t to close this menu and continue testing.\n");
-    else printf("Type r to return to the database management menu\n");
-    printf("Type x to ");
-    if (fromtest) printf("end testing and ");
-    printf("return to the main menu.\n\n");
-    optionsmenuchoice=getchar();
-    clearinputbuffer();
+    else {popuperror("Unable to deduce list!!");exit(1);}
+
+    if(!(editormenuitems = (ITEM**)calloc(numberofchoices-1,sizeof(ITEM*)))) outofmemory(); //the -1 is because 2 entries are context specific
+    for(i=0,j=0;i < numberofchoices;i++)
+    {
+        if ((fromtest && (i==7||i==8)) || ((!fromtest) && (i==6||i==9))) {j++;continue;} //if entry shouldn't be shown, skip it
+        editormenuitems[i-j] = new_item(editormenuchoices[i][0], editormenuchoices[i][1]);
+        set_item_userptr (editormenuitems[i-j],&editormenupointers[i]);
+    }
+    editormenuitems[(i-j)] = (ITEM *)NULL;
+
+    wbeditormenu=nicebigwindow();
+    windowtitle(wbeditormenu,"Vocab Editor");
+    peditormenu=new_panel(wbeditormenu);
+    weditormenu=innerwindow(wbeditormenu);
+
+    wprintw(weditormenu,"Current Entry:\n\nQuestion: %s\nAnswer: '%s'\n",entry->question,entry->answer);
+    if (entry->info) wprintw(weditormenu,"Info: %s\n",entry->info);else wprintw(weditormenu,"No info.\n");
+    if (entry->hint) wprintw(weditormenu,"Hint: %s\n\n",entry->hint);else wprintw(weditormenu,"No hint.\n\n");
+    editormenu = new_menu(editormenuitems);
+    set_menu_win(editormenu,weditormenu);
+    set_menu_sub(editormenu,derwin(weditormenu,0,0,7,0));
+    set_menu_back(editormenu,COLOR_PAIR(1));
+    menu_opts_off(editormenu,O_NONCYCLIC);
+    post_menu(editormenu);
+    update_panels();
+    doupdate();
+
+    optionsmenuchoice=wgetch(weditormenu);
+    while (optionsmenuchoice==KEY_UP || optionsmenuchoice==KEY_DOWN)
+    {
+        if (optionsmenuchoice==KEY_UP) menu_driver(editormenu,REQ_UP_ITEM);
+        else menu_driver(editormenu,REQ_DOWN_ITEM);
+        optionsmenuchoice=wgetch(weditormenu);
+    }
+    if (optionsmenuchoice==10)
+    {
+        ITEMselected=current_item(editormenu);
+        pselected=item_userptr(ITEMselected);
+        optionsmenuchoice=*pselected;
+    }
     switch (optionsmenuchoice)
     {
-        case 'q': printf("Enter new question text for this entry (max %i chars):\n",maxtextlength);
+        case 'q': wprintw(/*FISH!*/stdscr,"Enter new question text for this entry (max %i chars):\n",maxtextlength);
         entry->question=wgettextfromkeyboard(/*FISH!*/stdscr,entry->question,MAXTEXTLENGTH);
         break;
-        case 'a': printf("Enter new answer text for this entry (max %i chars):\n",maxtextlength);
+        case 'a': wprintw(/*FISH!*/stdscr,"Enter new answer text for this entry (max %i chars):\n",maxtextlength);
         entry->answer=wgettextfromkeyboard(/*FISH!*/stdscr,entry->answer,MAXTEXTLENGTH);
         break;
-        case 'i': printf("Enter new info for this entry (max %i chars):\n",maxtextlength);
+        case 'i': wprintw(/*FISH!*/stdscr,"Enter new info for this entry (max %i chars):\n",maxtextlength);
         entry->info=wgettextfromkeyboard(/*FISH!*/stdscr,entry->info,MAXTEXTLENGTH);
         break;
-        case 'h': printf("Enter new hint for this entry (max %i chars):\n",maxtextlength);
+        case 'h': wprintw(/*FISH!*/stdscr,"Enter new hint for this entry (max %i chars):\n",maxtextlength);
         entry->hint=wgettextfromkeyboard(/*FISH!*/stdscr,entry->hint,MAXTEXTLENGTH);
         break;
-        case 'p': if(list==&n2l)printf("Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
+        case 'p': if(list==&n2l)wprintw(/*FISH!*/stdscr,"Already marked as priority!\n"); //was using = instead of == in if condition, thank you very much gcc compiler output :-)
                   else
                   {
                       removefromlist(entry,list,0);
                       entry->counter = 0;
                       list=&n2l;
                       addtolist(entry,list);
-                      printf("This entry will be brought up more often\n");
+                      wprintw(/*FISH!*/stdscr,"This entry will be brought up more often\n");
                   }
                   break;
-        case 'd': printf("Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
-                  if (getyesorno("FISH!")) {removefromlist(entry,list,1);printf("Entry deleted!\n");return 0;}
-                  else printf("Entry was NOT deleted.\n");
+        case 'd': wprintw(/*FISH!*/stdscr,"Are you sure you want to delete this entry?\nOnce you save, this will be permanent!(y/n)");
+                  if (getyesorno("FISH!")) {removefromlist(entry,list,1);wprintw(/*FISH!*/stdscr,"Entry deleted!\n");return 0;}
+                  else wprintw(/*FISH!*/stdscr,"Entry was NOT deleted.\n");
                   break;
         case 'x': return -1;
         break;
         case 't': if (fromtest) return 0;
-                  else printf("You are not currently testing.\nReturn to the main menu and select 'Test me!'.\n");
+                  else wprintw(/*FISH!*/stdscr,"You are not currently testing.\nReturn to the main menu and select 'Test me!'.\n");
         break;
-        case 'r': if (fromtest) printf("Database management is not available from testing mode.\nReturn to the main menu and select 'Manage database'.\n");
+        case 'r': if (fromtest) wprintw(/*FISH!*/stdscr,"Database management is not available from testing mode.\nReturn to the main menu and select 'Manage database'.\n");
                   else return 0;
         break;
-        default: printf("Invalid choice.\n");
+        default: popupinfo(2,"Sorry:","Invalid choice");
     }
-    printf("Select again from the options menu? (y/n)");
+    wprintw(/*FISH!*/stdscr,"Select again from the options menu? (y/n)");
     if (getyesorno("FISH!")) return 1;
     else
     {
-        if (fromtest) printf("Continue testing?(y/n)"); else printf ("Return to database management menu?(y/n)");
+        if (fromtest) wprintw(/*FISH!*/stdscr,"Continue testing?(y/n)"); else printf ("Return to database management menu?(y/n)");
         if (getyesorno("FISH!")) return 0; else return -1;
     }
 }
@@ -946,7 +1004,7 @@ void testme()
     struct vocab * currententry = NULL;
     char testmenuchoice = '\n';
     char * youranswer = (char *)malloc(MAXTEXTLENGTH+1);
-    if (!youranswer) {printf("Memory allocation error!\n");return;}
+    if (!youranswer) {wprintw(/*FISH!*/stdscr,"Memory allocation error!\n");return;}
 
     while (testagain)
     {
@@ -974,7 +1032,7 @@ void testme()
         if (currentlist->entries==0) currentlist = &known;//in the other 90% of cases, or if old is empty, use the known list
         if (currentlist->entries==0) currentlist = &old;//if known list is empty, try the old list
         if (currentlist->entries==0) {currentlist = &n2l;n2l_flag=1;}//if old list is empty, use n2l list EVEN if it was used last time
-        if (currentlist->entries==0) {printf("No entries in list!\n\n");free(youranswer);clearinputbuffer();return;} //if list is STILL empty, abort
+        if (currentlist->entries==0) {wprintw(/*FISH!*/stdscr,"No entries in list!\n\n");free(youranswer);clearinputbuffer();return;} //if list is STILL empty, abort
 
         //we now have the desired list of words with at least one entry, let's select an entry at random from this list
         entry_selector = (rand() % currentlist->entries)+1;
@@ -982,18 +1040,18 @@ void testme()
         while (currententry->index!=entry_selector)
         {
             currententry = currententry->next;//move through list until index matches the random number
-            if (currententry==NULL) {printf("Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);free(youranswer);return;}//in case not found in list
+            if (currententry==NULL) {wprintw(/*FISH!*/stdscr,"Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);free(youranswer);return;}//in case not found in list
         }
 
         changedflag = 1;
-        printf("Translate the following:\n\n\t%s\n\n",currententry->question);
-        if (!currententry->info) printf("There is no additional information for this entry.\n");
-        else printf("Useful Info: %s\n\n",currententry->info);
-        if (!currententry->hint) printf("There is no hint available for this entry.\n");
-        else printf("There is a hint available for this entry. Type 'h' to view it.\nIf you view the hint, correct answers will not improve your score.\n\n");
-        printf("Your Translation");
-        if (currententry->hint) printf(" (or 'h' for hint)");
-        printf(":\n\n\t");
+        wprintw(/*FISH!*/stdscr,"Translate the following:\n\n\t%s\n\n",currententry->question);
+        if (!currententry->info) wprintw(/*FISH!*/stdscr,"There is no additional information for this entry.\n");
+        else wprintw(/*FISH!*/stdscr,"Useful Info: %s\n\n",currententry->info);
+        if (!currententry->hint) wprintw(/*FISH!*/stdscr,"There is no hint available for this entry.\n");
+        else wprintw(/*FISH!*/stdscr,"There is a hint available for this entry. Type 'h' to view it.\nIf you view the hint, correct answers will not improve your score.\n\n");
+        wprintw(/*FISH!*/stdscr,"Your Translation");
+        if (currententry->hint) wprintw(/*FISH!*/stdscr," (or 'h' for hint)");
+        wprintw(/*FISH!*/stdscr,":\n\n\t");
         wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH);
 
         if (currententry->hint) //if there's a hint available...
@@ -1002,7 +1060,7 @@ void testme()
             if (!strcmp(youranswer,"h")) //...if it is used...
             {
                 usedhint = 1; //...mark as used
-                printf("\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
+                wprintw(/*FISH!*/stdscr,"\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
                 wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH); //prompt for answer
             }
         }
@@ -1011,44 +1069,44 @@ void testme()
         {
             if(usedhint)
             {
-                printf("\nWell done. See if you can remember without the hint next time...\n");
+                wprintw(/*FISH!*/stdscr,"\nWell done. See if you can remember without the hint next time...\n");
                 
                 currententry->right = currententry->counter = 1;
                 if (currentlist==&old)
                 {
                     removefromlist(currententry,currentlist,0);
-                    printf("It will be brought up a couple more times to help you remember it.\n");
+                    wprintw(/*FISH!*/stdscr,"It will be brought up a couple more times to help you remember it.\n");
                     addtolist(currententry,&known);
                 }
             }
             else
             {
-                printf("Yay!\n");
+                wprintw(/*FISH!*/stdscr,"Yay!\n");
 
                 if(currententry->right) currententry->counter++;
                 else currententry->right = currententry->counter = 1;
-                if (currententry->counter>2) printf("You answered correctly the last %i times in a row!\n",currententry->counter);
+                if (currententry->counter>2) wprintw(/*FISH!*/stdscr,"You answered correctly the last %i times in a row!\n",currententry->counter);
             }
 
             //make comments based on how well it's known, and move to a higher list if appropriate
             if (currentlist==&n2l && currententry->counter>=N2LTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("Looks like you know this one a little better now!\nIt will be brought up less frequently.\n");
+                wprintw(/*FISH!*/stdscr,"Looks like you know this one a little better now!\nIt will be brought up less frequently.\n");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&norm && currententry->counter>=NORMTOKNOWN)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("Looks like you know this one now!\nIt will be brought up much less frequently.\n");
+                wprintw(/*FISH!*/stdscr,"Looks like you know this one now!\nIt will be brought up much less frequently.\n");
                 currententry->counter = 1;
                 addtolist(currententry,&known);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTOOLD)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("OK! So this one's well-learnt.\nIt probably won't be brought up much any more.\n");
+                wprintw(/*FISH!*/stdscr,"OK! So this one's well-learnt.\nIt probably won't be brought up much any more.\n");
                 currententry->counter = 1;
                 addtolist(currententry,&old);
             }
@@ -1056,36 +1114,36 @@ void testme()
     
         else //if you're wrong
         {
-            printf("\nSorry, the correct answer is:\n\n\t%s\n\n",currententry->answer);
+            wprintw(/*FISH!*/stdscr,"\nSorry, the correct answer is:\n\n\t%s\n\n",currententry->answer);
         
             if(!currententry->right) currententry->counter++;
             else {currententry->right = 0; currententry->counter = 1;}
-            if (currententry->counter>1) printf("You've got this one wrong the last %i times.\n",currententry->counter);
+            if (currententry->counter>1) wprintw(/*FISH!*/stdscr,"You've got this one wrong the last %i times.\n",currententry->counter);
             if (currentlist==&norm && currententry->counter>=NORMTON2L)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("This one could do with some learning...\n");
+                wprintw(/*FISH!*/stdscr,"This one could do with some learning...\n");
                 currententry->counter = 1;
                 addtolist(currententry,&n2l);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("OK, perhaps you don't know this one as well as you once did...\n");
+                wprintw(/*FISH!*/stdscr,"OK, perhaps you don't know this one as well as you once did...\n");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&old && currententry->counter>=OLDTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                printf("This old one caught you out, huh? It will be brought up a few more times to help you remember it.\n");
+                wprintw(/*FISH!*/stdscr,"This old one caught you out, huh? It will be brought up a few more times to help you remember it.\n");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
         }
 
-        printf("Your score is now %.1f%%.\n",calculatescore(0));
-        printf("Type 'o' for options or strike enter for another question\n");
+        wprintw(/*FISH!*/stdscr,"Your score is now %.1f%%.\n",calculatescore(0));
+        wprintw(/*FISH!*/stdscr,"Type 'o' for options or strike enter for another question\n");
         testmenuchoice = getchar();
         if (tolower(testmenuchoice)=='o') bringupmenu = 1;
         if (testmenuchoice!='\n') clearinputbuffer();
@@ -1114,7 +1172,7 @@ char * wgettextfromkeyboard(WINDOW * window, char * target,int maxchars)
     {
         memoryallocated_flag=1;
         target=(char *)malloc(maxchars+1);
-        if (!target) {printf("Memory allocation failed!");return NULL;}//return null if failed
+        if (!target) {popuperror("Memory allocation failed!");return NULL;}//return null if failed
     }
     echo();
     wgetnstr(window,target,maxchars);
@@ -1130,10 +1188,10 @@ int getyesorno(char * question)
     ITEM ** getyesornoitems;//this pointer will be passed to the menu
     char * getyesornochoices[] = //strings for menu
     {
-        "[ No ]",
-        "[ Yes ]"
+        "[ Yes ]",
+        "[ No ]"
     };
-    int getyesornoreturnvalues[] = { 0 , 1 };
+    int getyesornoreturnvalues[] = { 1 , 0 };
 
     ITEM * ITEMselected; //this will point to selected item
     int * pselected; //this will point to the function attached to selected item
@@ -1203,7 +1261,7 @@ int getyesorno(char * question)
     }
     unpost_menu(getyesornomenu);
     free_menu(getyesornomenu);
-    for (i=0;i<numberofchoices;i++);
+    for (i=0;i<=numberofchoices;i++) free_item(getyesornoitems[i]);
     delwin(wgetyesorno);
     del_panel(pgetyesorno);
     delwin(wbgetyesorno);
@@ -1271,20 +1329,20 @@ float calculatescore(int showstats)//returns overall idea of progress as percent
             entry=entry->next;
         }
     }
-    if (!count) {printf("No entries in list!");clearinputbuffer();return 0;}
+    if (!count) {wprintw(/*FISH!*/stdscr,"No entries in list!");clearinputbuffer();return 0;}
     score = ((float)knowntotal / (3*(float)count))*100;
     if (showstats)
     {
         clrscr();
-        printf("Your current stats:\n\nYour current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
-        if (untested) printf("%d of these you've never been tested on.\n",untested);
-        else printf("You've been tested on all of them at least once.\n");
-        printf("%i of these you got RIGHT the last time they came up.\n",rights);
-        printf("%i of these you got WRONG the last time they came up.\n\n",wrongs);
-        printf("%i loaded entries have additional info.\n",infos);
-        printf("%i loaded entries have an associated hint.\n\n",hints);
-        if (bestrun) printf("Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
-        if (worstrun) printf("Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
+        wprintw(/*FISH!*/stdscr,"Your current stats:\n\nYour current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
+        if (untested) wprintw(/*FISH!*/stdscr,"%d of these you've never been tested on.\n",untested);
+        else wprintw(/*FISH!*/stdscr,"You've been tested on all of them at least once.\n");
+        wprintw(/*FISH!*/stdscr,"%i of these you got RIGHT the last time they came up.\n",rights);
+        wprintw(/*FISH!*/stdscr,"%i of these you got WRONG the last time they came up.\n\n",wrongs);
+        wprintw(/*FISH!*/stdscr,"%i loaded entries have additional info.\n",infos);
+        wprintw(/*FISH!*/stdscr,"%i loaded entries have an associated hint.\n\n",hints);
+        if (bestrun) wprintw(/*FISH!*/stdscr,"Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
+        if (worstrun) wprintw(/*FISH!*/stdscr,"Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
         clearinputbuffer();
     }
     return score;
@@ -1352,8 +1410,8 @@ WINDOW * nicebigwindow()//creates a bordered, blue window, taking up most of the
 
 void popupinfo(int colour,char * title,char * message)//pops up a window with the given colour, title and text
 {
-    WINDOW * wbpopup, * wpopup;
-    PANEL * ppopup;
+    WINDOW * wbpopup = NULL, * wpopup = NULL;
+    PANEL * ppopup = NULL;
     int width, height;
     
     width=textwidth(message);
@@ -1361,8 +1419,7 @@ void popupinfo(int colour,char * title,char * message)//pops up a window with th
     if (width>ncols-16)width=ncols-16;
     height=textheight(message,width)+4;
     width+=8;
-    wbpopup = newwin(height,width,(nlines-height)/2,(ncols-width)/2);
-    if(!wpopup)outofmemory();
+    if (!(wbpopup = newwin(height,width,(nlines-height)/2,(ncols-width)/2))) outofmemory();
     ppopup = new_panel(wbpopup);
     wattrset(wbpopup,COLOR_PAIR(colour));
     werase(wbpopup);
@@ -1386,8 +1443,8 @@ void popupinfo(int colour,char * title,char * message)//pops up a window with th
 
 void popuperror(char * errormessage)//pops up an error and makes a note in the log
 {
-    WINDOW * wberror, * werror;
-    PANEL * perror;
+    WINDOW * wberror = NULL, * werror = NULL;
+    PANEL * perror = NULL;
     int errorwidth, errorheight;
 
     fprintf(stderr,"%s\n",errormessage);
@@ -1395,8 +1452,7 @@ void popuperror(char * errormessage)//pops up an error and makes a note in the l
     getmaxyx(stdscr,nlines,ncols);
     if (errorwidth>ncols-16)errorwidth=ncols-16;
     errorheight=textheight(errormessage,errorwidth);
-    wberror = newwin(errorheight+4,errorwidth+8,(nlines-(errorheight+4))/2,(ncols-(errorwidth+8))/2);
-    if(!wberror)outofmemory();
+    if (!(wberror = newwin(errorheight+4,errorwidth+8,(nlines-(errorheight+4))/2,(ncols-(errorwidth+8))/2))) outofmemory();
     perror = new_panel(wberror);
     wattrset(wberror,COLOR_PAIR(3));
     werase(wberror);
@@ -1582,7 +1638,7 @@ int main(int argc, char* argv[])
     unpost_menu(mainmenu);
     free_menu(mainmenu);
     for (i=0;i<numberofchoices;i++)
-        free_item(mainmenuitems[i]);
+        if (mainmenuitems[i]) free_item(mainmenuitems[i]);
     del_panel(pmainmenu);
     delwin(wmainmenu);
     delwin(wbmainmenu);
