@@ -611,7 +611,8 @@ void databasemenu()//provides ability to add entries to database, and edit entri
     unpost_menu(databasemenu);
     free_menu(databasemenu);
     for (i=0;i<numberofchoices;i++)
-    free_item(databasemenuitems[i]);
+        free_item(databasemenuitems[i]);
+    free(databasemenuitems);
     del_panel(pdatabasemenu);
     delwin(wdatabasemenu);
     delwin(wbdatabasemenu);
@@ -858,6 +859,7 @@ struct vocab * vocabfuzzysearch(char * searchstring)//returns a pointer to vocab
     free_menu(fuzzysearchmenu);
     for (i=0;i<10;i++)
     if (fuzzysearchmenuitems[i]) free_item(fuzzysearchmenuitems[i]);
+    free(fuzzysearchmenuitems);
     del_panel(pfuzzysearch);
     delwin(wfuzzysearch);
     delwin(wbfuzzysearch);
@@ -1005,7 +1007,8 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     }
     cleanup:
     unpost_menu(editormenu);
-    for (i=0;i<j;i++)
+    free_menu(editormenu);
+    for (i=0;i<=j;i++)
         free_item(editormenuitems[i]);
     free(editormenuitems);
     del_panel(peditormenu);
@@ -1282,6 +1285,7 @@ int getyesorno(char * question)
     unpost_menu(getyesornomenu);
     free_menu(getyesornomenu);
     for (i=0;i<=numberofchoices;i++) free_item(getyesornoitems[i]);
+    free(getyesornoitems);
     delwin(wgetyesorno);
     del_panel(pgetyesorno);
     delwin(wbgetyesorno);
