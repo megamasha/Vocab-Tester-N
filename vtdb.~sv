@@ -1,4 +1,4 @@
-etc.~dan lain-lain~~~0~0~0
+etc.~dan lain-lain~~~1~2~0
 (h)anyir~rancid/rank~~~0~0~1
 abad~age/century/era~~~0~0~1
 abang~older brother~~~0~0~1
@@ -369,7 +369,7 @@ niat~aim/intention/plan~~~0~0~1
 nilai~price/school grade/value~~~0~0~1
 not at all wet~sama sekali tidak basah~~~0~0~1
 nyala~flame~~~0~1~1
-nyalang~clear~~~0~0~1
+nyalang~clear~~~0~1~1
 nyaring~nigh-pitched/peircing~~~0~0~1
 nyaris~nearly (of something unpleasant)~~~0~0~1
 nyenyak~sound (sleep)~~~0~1~1
@@ -391,7 +391,7 @@ parang~chopping knife/short mashete~~~0~0~1
 paya~marsh/swamp~~~0~1~1
 payah~difficult/tired~~~0~0~1
 pekerja~worker~~~0~0~1
-pelajar~student~~~0~0~1
+pelajar~student~~~1~1~1
 pelajaran~lesson~~~1~1~1
 peluit~whistle~~~0~0~1
 pemberian~gift~~~0~0~1
@@ -1067,7 +1067,7 @@ zzjualan~merchandise/wares~~~0~1~2
 zzkaisar~emperor~~~0~1~2
 zzkeemasan~golden~~~0~0~2
 zzkeemas-emasan~golden~~~0~0~2
-zzkeindahan~beauty~~~0~0~2
+zzkeindahan~beauty~~~1~1~2
 zzkepandaian~ability/intelligence/skill~~~0~0~2
 zzkertas~paper~~~0~0~2
 zzkukus~steam/vapour~~~0~1~2

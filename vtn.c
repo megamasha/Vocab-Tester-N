@@ -20,7 +20,7 @@
 #define DINPUTFILENAME "vtdb.~sv"
 #define DOUTPUTFILENAME "vtdb.~sv"
 #define MAXINTVALUE 2147483647
-#define MAXTEXTLENGTH 256
+#define MAXTEXTLENGTH 255
 #define N2LTONORM 5
 #define NORMTON2L 3
 #define NORMTOKNOWN 5
@@ -63,7 +63,7 @@ struct listinfo n2l, norm, known, old;
 int changedflag = 0;
 char currentfilename[MAXTEXTLENGTH+1] = DOUTPUTFILENAME;
 int nlines,ncols;
-char passingstring[513];
+char passingstring[(2*MAXTEXTLENGTH)+1];
 
 void loaddatabase();//select which database to load and pass it to wgetrecordsfromfile
 char * validfilename (char * filename, char * extension);//filename validation
@@ -873,8 +873,8 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
     WINDOW * wbeditormenu, * weditormenu;
     PANEL * peditormenu;
     ITEM ** editormenuitems;
-    ITEM * ITEMselected;
-    char * pselected;
+    ITEM * ITEMselected = NULL;
+    char * pselected = NULL;
     MENU * editormenu;
     char * editormenuchoices[][2] =
     {
@@ -899,6 +899,7 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
         'd',
         't',
         'r',
+        'x',
         'x'
     };
     struct listinfo * list;
@@ -1021,21 +1022,28 @@ int editormenu(struct vocab * entry, int fromtest)//shows menu to edit current e
 
 void testme()
 {
+    WINDOW * wbtestme = NULL, * wtestme = NULL;
+    PANEL * ptestme = NULL;
     int list_selector=0, entry_selector=0, bringupmenu = 0, testagain=1, menuresult=0, usedhint=0;
     int n2l_flag=0; //Prevents 'need to learn's coming up twice in a row
     struct listinfo * currentlist = NULL;
     struct vocab * currententry = NULL;
-    char testmenuchoice = '\n';
+    int testmenuchoice = '\n';
     char * youranswer = (char *)malloc(MAXTEXTLENGTH+1);
-    if (!youranswer) {wprintw(/*FISH!*/stdscr,"Memory allocation error!\n");return;}
+    if (!youranswer) outofmemory();
+
+    wbtestme=nicebigwindow();
+    windowtitle(wbtestme,"Testing mode:");
+    ptestme=new_panel(wbtestme);
+    wtestme=innerwindow(wbtestme);
 
     while (testagain)
     {
-        clrscr();
+        werase(wtestme);
 
         //select a list at random, using the percentage probabilities in the if statements.
         list_selector = (rand() % 100)+1;
-        if (list_selector>100) {fprintf(stderr,"Problem with random number generator. Fix it!");exit(1);}
+        if (list_selector>100) {popuperror("Problem with random number generator. Fix it!");exit(1);}
         else if (list_selector==100) currentlist = &old;
         else if (list_selector>94) currentlist = &known;
         else if (list_selector>32) {n2l_flag=0;currentlist=&norm;} //use norm list and cancel n2l flag (not cancelled with other lists)
@@ -1055,7 +1063,7 @@ void testme()
         if (currentlist->entries==0) currentlist = &known;//in the other 90% of cases, or if old is empty, use the known list
         if (currentlist->entries==0) currentlist = &old;//if known list is empty, try the old list
         if (currentlist->entries==0) {currentlist = &n2l;n2l_flag=1;}//if old list is empty, use n2l list EVEN if it was used last time
-        if (currentlist->entries==0) {wprintw(/*FISH!*/stdscr,"No entries in list!\n\n");free(youranswer);clearinputbuffer();return;} //if list is STILL empty, abort
+        if (currentlist->entries==0) {popupinfo(3,"","No vocab loaded!");free(youranswer);clearinputbuffer();return;} //if list is STILL empty, abort
 
         //we now have the desired list of words with at least one entry, let's select an entry at random from this list
         entry_selector = (rand() % currentlist->entries)+1;
@@ -1063,19 +1071,22 @@ void testme()
         while (currententry->index!=entry_selector)
         {
             currententry = currententry->next;//move through list until index matches the random number
-            if (currententry==NULL) {wprintw(/*FISH!*/stdscr,"Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);free(youranswer);return;}//in case not found in list
+            if (currententry==NULL) {sprintf(passingstring,"Indexing error!\nCurrent list selector: %i, entries: %i, entry selector: %i\n",list_selector,currentlist->entries,entry_selector);popuperror(passingstring);free(youranswer);return;}//in case not found in list
         }
 
         changedflag = 1;
-        wprintw(/*FISH!*/stdscr,"Translate the following:\n\n\t%s\n\n",currententry->question);
-        if (!currententry->info) wprintw(/*FISH!*/stdscr,"There is no additional information for this entry.\n");
-        else wprintw(/*FISH!*/stdscr,"Useful Info: %s\n\n",currententry->info);
-        if (!currententry->hint) wprintw(/*FISH!*/stdscr,"There is no hint available for this entry.\n");
-        else wprintw(/*FISH!*/stdscr,"There is a hint available for this entry. Type 'h' to view it.\nIf you view the hint, correct answers will not improve your score.\n\n");
-        wprintw(/*FISH!*/stdscr,"Your Translation");
-        if (currententry->hint) wprintw(/*FISH!*/stdscr," (or 'h' for hint)");
-        wprintw(/*FISH!*/stdscr,":\n\n\t");
-        wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH);
+        getmaxyx(wtestme,nlines,ncols);
+        mvwprintw(wtestme,0,0,"Translate the following:\n\n\t%s\n\n",currententry->question);
+        mvwprintw(wtestme,0,ncols-14,"Score: %.1f%%",calculatescore(0));
+        wmove(wtestme,4,0);
+        if (!currententry->info) wprintw(wtestme,"There is no additional information for this entry.\n");
+        else wprintw(wtestme,"Useful Info: %s\n\n",currententry->info);
+        if (!currententry->hint) wprintw(wtestme,"There is no hint available for this entry.\n");
+        else wprintw(wtestme,"There is a hint available for this entry. Enter 'h' to view it.\nIf you view the hint, correct answers will not improve your score.\n");
+        wprintw(wtestme,"\nYour Translation");
+        if (currententry->hint) wprintw(wtestme," (or 'h' for hint)");
+        wprintw(wtestme,":\n\n\t");
+        wgettextfromkeyboard(wtestme,youranswer,MAXTEXTLENGTH);
 
         if (currententry->hint) //if there's a hint available...
         {
@@ -1083,53 +1094,55 @@ void testme()
             if (!strcmp(youranswer,"h")) //...if it is used...
             {
                 usedhint = 1; //...mark as used
-                wprintw(/*FISH!*/stdscr,"\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
-                wgettextfromkeyboard(/*FISH!*/stdscr,youranswer,MAXTEXTLENGTH); //prompt for answer
+                wprintw(wtestme,"\nHINT: %s\n\nYour Translation:\n\n\t",currententry->hint); //display hint
+                wgettextfromkeyboard(wtestme,youranswer,MAXTEXTLENGTH); //prompt for answer
             }
         }
+
+        wprintw(wtestme,"\n");
 
         if (!strcmp(youranswer,currententry->answer))//if you're right
         {
             if(usedhint)
             {
-                wprintw(/*FISH!*/stdscr,"\nWell done. See if you can remember without the hint next time...\n");
-                
+                popupinfo(2,"Well done","See if you can remember without the hint next time...");
+
                 currententry->right = currententry->counter = 1;
                 if (currentlist==&old)
                 {
                     removefromlist(currententry,currentlist,0);
-                    wprintw(/*FISH!*/stdscr,"It will be brought up a couple more times to help you remember it.\n");
+                    popupinfo(2,"","It will be brought up a couple more times to help you remember it.");
                     addtolist(currententry,&known);
                 }
             }
             else
             {
-                wprintw(/*FISH!*/stdscr,"Yay!\n");
+                popupinfo(4,"Yay!","You're right!");
 
                 if(currententry->right) currententry->counter++;
                 else currententry->right = currententry->counter = 1;
-                if (currententry->counter>2) wprintw(/*FISH!*/stdscr,"You answered correctly the last %i times in a row!\n",currententry->counter);
+                if (currententry->counter>2) {sprintf(passingstring,"You answered correctly the last %i times in a row!\n",currententry->counter);popupinfo(4,"",passingstring);}
             }
 
             //make comments based on how well it's known, and move to a higher list if appropriate
             if (currentlist==&n2l && currententry->counter>=N2LTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"Looks like you know this one a little better now!\nIt will be brought up less frequently.\n");
+                popupinfo(4,"","Looks like you know this one a little better now!\nIt will be brought up less frequently.");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&norm && currententry->counter>=NORMTOKNOWN)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"Looks like you know this one now!\nIt will be brought up much less frequently.\n");
+                popupinfo(4,"","Looks like you know this one now!\nIt will be brought up much less frequently.");
                 currententry->counter = 1;
                 addtolist(currententry,&known);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTOOLD)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"OK! So this one's well-learnt.\nIt probably won't be brought up much any more.\n");
+                popupinfo(4,"","OK! So this one's well-learnt.\nIt probably won't be brought up much any more.");
                 currententry->counter = 1;
                 addtolist(currententry,&old);
             }
@@ -1137,39 +1150,40 @@ void testme()
     
         else //if you're wrong
         {
-            wprintw(/*FISH!*/stdscr,"\nSorry, the correct answer is:\n\n\t%s\n\n",currententry->answer);
+            sprintf(passingstring,"The correct answer is:\n\n.%s.",currententry->answer);
+            popupinfo(3,"Sorry!",passingstring);
         
             if(!currententry->right) currententry->counter++;
             else {currententry->right = 0; currententry->counter = 1;}
-            if (currententry->counter>1) wprintw(/*FISH!*/stdscr,"You've got this one wrong the last %i times.\n",currententry->counter);
+            if (currententry->counter>1) {sprintf(passingstring,"You've got this one wrong the last %i times.",currententry->counter);popupinfo(3,"",passingstring);}
             if (currentlist==&norm && currententry->counter>=NORMTON2L)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"This one could do with some learning...\n");
+                popupinfo(3,"","This one could do with some learning...");
                 currententry->counter = 1;
                 addtolist(currententry,&n2l);
             }
             if (currentlist==&known && currententry->counter>=KNOWNTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"OK, perhaps you don't know this one as well as you once did...\n");
+                popupinfo(3,"","OK, perhaps you don't know this one as well as you once did...");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
             if (currentlist==&old && currententry->counter>=OLDTONORM)
             {
                 removefromlist(currententry,currentlist,0);
-                wprintw(/*FISH!*/stdscr,"This old one caught you out, huh? It will be brought up a few more times to help you remember it.\n");
+                popupinfo(3,"","This old one caught you out, huh? It will be brought up a few more times to help you remember it.");
                 currententry->counter = 1;
                 addtolist(currententry,&norm);
             }
         }
 
-        wprintw(/*FISH!*/stdscr,"Your score is now %.1f%%.\n",calculatescore(0));
-        wprintw(/*FISH!*/stdscr,"Type 'o' for options or strike enter for another question\n");
-        testmenuchoice = getchar();
+        getmaxyx(wtestme,nlines,ncols);
+        mvwprintw(wtestme,0,ncols-14,"Score: %.1f%%",calculatescore(0));
+        mvwprintw(wtestme,nlines-1,0,"Press 'o' for options or any other key for another question...");
+        testmenuchoice = wgetch(wtestme);
         if (tolower(testmenuchoice)=='o') bringupmenu = 1;
-        if (testmenuchoice!='\n') clearinputbuffer();
         while (bringupmenu)
         {
             menuresult = editormenu(currententry,1);
@@ -1180,8 +1194,10 @@ void testme()
                 default: continue;
             }
         }
-        clrscr();
     }
+    del_panel(ptestme);
+    delwin(wtestme);
+    delwin(wbtestme);
     free(youranswer);
     return;
 }
@@ -1313,6 +1329,8 @@ void clearinputbuffer()
 
 float calculatescore(int showstats)//returns overall idea of progress as percentage, displays screenful of stats if 'showstats' is true
 {
+    WINDOW * wbscore = NULL, * wscore = NULL;
+    PANEL * pscore = NULL;
     struct vocab * entry,* bestrunentry = NULL,* worstrunentry = NULL;
     struct listinfo * list;
     int i,count=0,knowntotal=0,infos=0,hints=0,untested=0,rights=0,wrongs=0,bestrun=0,worstrun=0;
@@ -1353,21 +1371,29 @@ float calculatescore(int showstats)//returns overall idea of progress as percent
             entry=entry->next;
         }
     }
-    if (!count) {wprintw(/*FISH!*/stdscr,"No entries in list!");clearinputbuffer();return 0;}
+    if (!count) {popuperror("No entries in list!");return 0;}
     score = ((float)knowntotal / (3*(float)count))*100;
     if (showstats)
     {
-        clrscr();
-        wprintw(/*FISH!*/stdscr,"Your current stats:\n\nYour current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
-        if (untested) wprintw(/*FISH!*/stdscr,"%d of these you've never been tested on.\n",untested);
-        else wprintw(/*FISH!*/stdscr,"You've been tested on all of them at least once.\n");
-        wprintw(/*FISH!*/stdscr,"%i of these you got RIGHT the last time they came up.\n",rights);
-        wprintw(/*FISH!*/stdscr,"%i of these you got WRONG the last time they came up.\n\n",wrongs);
-        wprintw(/*FISH!*/stdscr,"%i loaded entries have additional info.\n",infos);
-        wprintw(/*FISH!*/stdscr,"%i loaded entries have an associated hint.\n\n",hints);
-        if (bestrun) wprintw(/*FISH!*/stdscr,"Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
-        if (worstrun) wprintw(/*FISH!*/stdscr,"Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
-        clearinputbuffer();
+        wbscore = nicebigwindow();
+        pscore = new_panel(wbscore);
+        windowtitle(wbscore,"Your current stats:");
+        wscore = innerwindow(wbscore);
+        wprintw(wscore,"Your current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
+        if (untested) wprintw(wscore,"%d of these you've never been tested on.\n",untested);
+        else wprintw(wscore,"You've been tested on all of them at least once.\n");
+        wprintw(wscore,"%i of these you got RIGHT the last time they came up.\n",rights);
+        wprintw(wscore,"%i of these you got WRONG the last time they came up.\n\n",wrongs);
+        wprintw(wscore,"%i loaded entries have additional info.\n",infos);
+        wprintw(wscore,"%i loaded entries have an associated hint.\n\n",hints);
+        if (bestrun) wprintw(wscore,"Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
+        if (worstrun) wprintw(wscore,"Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
+        wgetch(wscore);
+        del_panel(pscore);
+        delwin(wscore);
+        delwin(wbscore);
+        update_panels();
+        doupdate();
     }
     return score;
 }
@@ -1507,14 +1533,6 @@ WINDOW * innerwindow(WINDOW * outerwindow)//creates an area within another windo
     return wtemp;
 }
 
-void donothing()
-{
-    int pointless;
-    pointless++;
-    printw("Face!");
-    refresh();
-}
-
 void windowtitle(WINDOW * window, char * title)//writes the given string to the given window (top centre)
 {
     int textlength;
@@ -1571,7 +1589,7 @@ int textheight (char * text, int width)//returns the height of a given string (w
 
 void showscore()
 {
-    donothing();
+    calculatescore(1);
 }
 
 int main(int argc, char* argv[])
@@ -1649,12 +1667,12 @@ int main(int argc, char* argv[])
                         pselected = item_userptr(ITEMselected);
                         pselected();
                         break;
-            //case 'v': showscore();break;
-            //case 't': testme(); break;
+            case 'v': showscore();break;
+            case 't': testme(); break;
             case 's': savedatabase();break;
             case 'l': reloaddatabase();break;
             case 'm': databasemenu(); break;
-            //default: wprintw(wmainmenu,"Invalid choice. Please try again.\n");break;
+            default: popupinfo(2,"Invalid choice","Please try again.");break;
         }
         update_panels();
         doupdate();

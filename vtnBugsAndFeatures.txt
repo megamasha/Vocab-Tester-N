@@ -2,6 +2,10 @@ Vocab Tester N:
 
     Give it a TUI
     Yes before No in 'getyesorno'
+    Make question bold
+    Use forms library where appropriate
+    showstats still has main menu title
+    Sorry, the correct answer is: <why doesn't this work!?>
 
 Potential improvements:
 
