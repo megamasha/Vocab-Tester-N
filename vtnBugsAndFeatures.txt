@@ -1,17 +1,9 @@
 Vocab Tester N:
 
-    Give it a TUI
-    Yes before No in 'getyesorno'
-    Make question bold
-    Use forms library where appropriate
-    showstats still has main menu title
-    Sorry, the correct answer is: <why doesn't this work!?>
-
 Potential improvements:
 
-    getc returns int, but return value is stored as char, leading to potential EOF error. Fix.
     vocabfuzzysearch is case sensitive, could be changed with tolower() or toupper().
     Test is currently (by design) case sensitive. An option could be added to make it case insensitive.
-    scanf, as used in vocabfuzzysearch is hideously unstable, and can cause unexpected results or crashes if a letter or other unexpected input is entered. Could be replaced with proper validation function.
-    Can the separate while loops at lines 648 and 654 be combined using 'substringlength++'?
-    if the default and most recently loaded databases are the same, the user is effectively asked the same thing twice
+    Can the separate while loops at lines 789 and 795 be combined using 'substringlength++'?
+    Use ncurses forms library where appropriate
+    In the 'Sorry, the correct answer is:' popup, an extra newline has been added as a workaround because otherwise the correct answer was not shown if the answer was shorther than the phrase 'The correct answer is:'. This could be fixed at considerable effort.

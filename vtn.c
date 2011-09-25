@@ -453,19 +453,19 @@ void savedatabase()
     if (!outputfilename) outofmemory();
     strcpy(outputfilename,deffilename);
     popupinfo(3,"WARNING:","If you provide a database filename that already exists, that database will be OVERWRITTEN!");
-    sprintf(passingstring,"Save to most recently loaded database: %s?",currentfilename);
-    if(getyesorno(passingstring))
+    if (strcmp(outputfilename,currentfilename))
     {
-        strcpy(outputfilename,currentfilename);
-    }
-    else
-    {
-        sprintf(passingstring,"Save to default database: %s? (y/n)",outputfilename);
-        if (!getyesorno(passingstring))//user specifies filename for database output
+        sprintf(passingstring,"Save to most recently loaded database: %s?",currentfilename);
+        if(getyesorno(passingstring))
         {
-            wprintw(wsavedatabase,"A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
-            outputfilename=validfilename(wgettextfromkeyboard(wsavedatabase,outputfilename,MAXTEXTLENGTH),".~sv");
+            strcpy(outputfilename,currentfilename);
         }
+    }
+    sprintf(passingstring,"Save to default database: %s? (y/n)",outputfilename);
+    if (!getyesorno(passingstring))//user specifies filename for database output
+    {
+        wprintw(wsavedatabase,"A .~sv file will be saved to the filename you provide.\nPlease enter a name for the .~sv file:\n");
+        outputfilename=validfilename(wgettextfromkeyboard(wsavedatabase,outputfilename,MAXTEXTLENGTH),".~sv");
     }
     if (!wwriteliststofile(wsavedatabase,outputfilename)) popuperror("Error while saving!!"); //print error message if wwriteliststofile returned 0
     else changedflag = 0;
@@ -1076,7 +1076,10 @@ void testme()
 
         changedflag = 1;
         getmaxyx(wtestme,nlines,ncols);
-        mvwprintw(wtestme,0,0,"Translate the following:\n\n\t%s\n\n",currententry->question);
+        mvwprintw(wtestme,0,0,"Translate the following:\n\n\t");
+        wattron(wtestme, A_BOLD);
+        wprintw(wtestme,"%s\n\n",currententry->question);
+        wattroff(wtestme, A_BOLD);
         mvwprintw(wtestme,0,ncols-14,"Score: %.1f%%",calculatescore(0));
         wmove(wtestme,4,0);
         if (!currententry->info) wprintw(wtestme,"There is no additional information for this entry.\n");
@@ -1150,7 +1153,7 @@ void testme()
     
         else //if you're wrong
         {
-            sprintf(passingstring,"The correct answer is:\n\n.%s.",currententry->answer);
+            sprintf(passingstring,"The correct answer is:\n\n%s\n",currententry->answer);
             popupinfo(3,"Sorry!",passingstring);
         
             if(!currententry->right) currententry->counter++;
@@ -1379,6 +1382,7 @@ float calculatescore(int showstats)//returns overall idea of progress as percent
         pscore = new_panel(wbscore);
         windowtitle(wbscore,"Your current stats:");
         wscore = innerwindow(wbscore);
+
         wprintw(wscore,"Your current score: %.1f%%\n\nThere are presently %i entries loaded.\n\n",score,count);
         if (untested) wprintw(wscore,"%d of these you've never been tested on.\n",untested);
         else wprintw(wscore,"You've been tested on all of them at least once.\n");
@@ -1388,6 +1392,8 @@ float calculatescore(int showstats)//returns overall idea of progress as percent
         wprintw(wscore,"%i loaded entries have an associated hint.\n\n",hints);
         if (bestrun) wprintw(wscore,"Your longest run of consecutive right answers is currently '%s', which you got right the last %i times.\n\n",bestrunentry->question,bestrun);
         if (worstrun) wprintw(wscore,"Your longest run of consecutive wrong answers is currently '%s', which you got wrong the last %i times.\n\n",worstrunentry->question,worstrun);
+        update_panels();
+        doupdate();
         wgetch(wscore);
         del_panel(pscore);
         delwin(wscore);
